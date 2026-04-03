@@ -64,7 +64,7 @@ export default function App() {
     <div style={{ display: "flex", width: "100%", height: "100%" }}>
       <div
         style={{
-          width: "20%",
+          width: "320px",
           minWidth: "260px",
           borderRight: "1px solid #ddd",
           padding: "16px",
@@ -122,7 +122,7 @@ export default function App() {
         </div>
       </div>
 
-      <div style={{ width: "80%", height: "100%" }}>
+      <div style={{ flex: 1, position: "relative" }}>
         <MapContainer center={[39.5, -98.35]} zoom={4} style={{ width: "100%", height: "100%" }}>
           <TileLayer
             attribution='&copy; OpenStreetMap contributors'
