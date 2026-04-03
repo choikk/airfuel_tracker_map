@@ -1,0 +1,55 @@
+import { neon } from "@neondatabase/serverless";
+
+export default async (req) => {
+  try {
+    const url = new URL(req.url);
+    const fuelType = (url.searchParams.get("fuelType") || "100LL").toUpperCase();
+    const serviceType = (url.searchParams.get("serviceType") || "FULL").toUpperCase();
+
+    const sql = neon(process.env.NEON_DATABASE_URL);
+
+    const rows = await sql`
+      SELECT DISTINCT ON (p.airport_code)
+        p.airport_code,
+        a.airport_name,
+        a.city,
+        a.state,
+        a.lat,
+        a.lon,
+        p.fbo_name,
+        p.fuel_type,
+        p.service_type,
+        p.price,
+        p.reported_date,
+        p.guaranteed
+      FROM price_periods p
+      JOIN airports a
+        ON a.airport_code = p.airport_code
+      WHERE p.valid_to IS NULL
+        AND p.fuel_type = ${fuelType}
+        AND p.service_type = ${serviceType}
+        AND a.lat IS NOT NULL
+        AND a.lon IS NOT NULL
+      ORDER BY p.airport_code, p.price ASC, p.reported_date DESC NULLS LAST
+    `;
+
+    return new Response(
+      JSON.stringify({
+        generatedAt: new Date().toISOString(),
+        airports: rows,
+      }),
+      {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }
+    );
+  } catch (err) {
+    return new Response(
+      JSON.stringify({ error: err.message || "Unknown error" }),
+      {
+        status: 500,
+        headers: { "content-type": "application/json" },
+      }
+    );
+  }
+};
