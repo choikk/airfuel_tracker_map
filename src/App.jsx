@@ -716,7 +716,7 @@ export default function App() {
               right: 0,
               bottom: 0,
               zIndex: 1002,
-              maxHeight: "78vh",
+              maxHeight: "50vh",
               overflowY: "auto",
               borderTopLeftRadius: 24,
               borderTopRightRadius: 24,
@@ -724,7 +724,7 @@ export default function App() {
               background: "#fff",
               padding: 16,
               boxShadow: "0 -12px 32px rgba(0,0,0,0.18)",
-              transform: mobilePanelOpen ? "translateY(0)" : "translateY(calc(100% - 72px))",
+              transform: mobilePanelOpen ? "translateY(0)" : "translateY(calc(100% - 64px))",
               transition: "transform 0.28s ease",
             }}
           >
