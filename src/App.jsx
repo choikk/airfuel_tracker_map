@@ -1,10 +1,12 @@
 import React, { useEffect, useMemo, useState } from "react";
+import L from "leaflet";
 import {
   MapContainer,
   TileLayer,
   CircleMarker,
   Popup,
   Tooltip,
+  Marker,
   useMap,
   useMapEvents,
 } from "react-leaflet";
@@ -14,10 +16,30 @@ import { Search, RefreshCw, Fuel, MapPinned, Filter, TrendingUp } from "lucide-r
 const FUEL_OPTIONS = [
   { value: "100LL", label: "100LL" },
   { value: "JET_A", label: "Jet-A" },
+  { value: "SAF", label: "SAF" },
   { value: "MOGAS", label: "MOGAS" },
   { value: "UL94", label: "UL94" },
   { value: "UL91", label: "UL91" },
 ];
+
+const topStarIcon = L.divIcon({
+  className: "top-star-marker",
+  html: `
+    <div style="
+      color:#000;
+      font-size:28px;
+      line-height:28px;
+      font-weight:700;
+      text-shadow:
+        0 0 2px #fff,
+        0 0 4px #fff,
+        0 0 6px #fff;
+      pointer-events:none;
+    ">★</div>
+  `,
+  iconSize: [28, 28],
+  iconAnchor: [14, 26],
+});
 
 function FitBounds({ airports }) {
   const map = useMap();
@@ -59,6 +81,16 @@ function MapBoundsWatcher({ onBoundsChange }) {
   return null;
 }
 
+function MapInstanceCapture({ onReady }) {
+  const map = useMap();
+
+  useEffect(() => {
+    onReady(map);
+  }, [map, onReady]);
+
+  return null;
+}
+
 function priceToColor(price, min, max) {
   if (price == null) return "#94a3b8";
   if (min == null || max == null || min === max) return "#eab308";
@@ -81,34 +113,82 @@ function toDisplayPrice(value) {
   return `$${n.toFixed(2)}`;
 }
 
-function MiniTrend({ points, width = 240, height = 72 }) {
+function isCanadaAirport(airport) {
+  return String(airport?.state || "").toUpperCase().includes("CANADA");
+}
+
+function formatMiniTrendDate(value) {
+  if (!value) return "";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return String(value);
+
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  const yyyy = String(d.getFullYear());
+
+  return `${mm}-${dd}-${yyyy}`;
+}
+
+function MiniTrend({ points, width = 260, height = 110, showPointLabels = false }) {
   if (!points || points.length < 2) {
     return <div style={{ fontSize: 12, color: "#64748b" }}>Not enough history</div>;
   }
 
-  const values = points
-    .map((p) => Number(p.avg_price ?? p.price))
-    .filter((v) => Number.isFinite(v));
+  const cleanPoints = points
+    .map((p) => {
+      const value = Number(p.avg_price ?? p.price);
+      if (!Number.isFinite(value)) return null;
 
-  if (values.length < 2) {
+      const rawDate = p.reported_date || p.date || p.valid_from || "";
+      const parsedTime = Date.parse(rawDate);
+
+      return {
+        raw: p,
+        value,
+        date: rawDate,
+        sortTime: Number.isNaN(parsedTime) ? null : parsedTime,
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => {
+      if (a.sortTime != null && b.sortTime != null) return a.sortTime - b.sortTime;
+      if (a.sortTime != null) return -1;
+      if (b.sortTime != null) return 1;
+      return String(a.date).localeCompare(String(b.date));
+    });
+
+  if (cleanPoints.length < 2) {
     return <div style={{ fontSize: 12, color: "#64748b" }}>Not enough history</div>;
   }
 
+  const values = cleanPoints.map((p) => p.value);
   const min = Math.min(...values);
   const max = Math.max(...values);
-  const padding = 6;
-  const usableW = width - padding * 2;
-  const usableH = height - padding * 2;
 
-  const coords = values
-    .map((v, i) => {
-      const x = padding + (i / Math.max(1, values.length - 1)) * usableW;
-      const y =
-        padding +
-        (max === min ? usableH / 2 : (1 - (v - min) / (max - min)) * usableH);
-      return `${x},${y}`;
-    })
-    .join(" ");
+  const paddingLeft = 10;
+  const paddingRight = showPointLabels ? 44 : 10;
+  const paddingTop = showPointLabels ? 20 : 8;
+  const paddingBottom = showPointLabels ? 18 : 8;
+
+  const usableW = width - paddingLeft - paddingRight;
+  const usableH = height - paddingTop - paddingBottom;
+
+  const coords = cleanPoints.map((p, i) => {
+    const x = paddingLeft + (i / Math.max(1, cleanPoints.length - 1)) * usableW;
+    const y =
+      paddingTop +
+      (max === min ? usableH / 2 : (1 - (p.value - min) / (max - min)) * usableH);
+
+    return {
+      ...p,
+      x,
+      y,
+      labelDate: formatMiniTrendDate(p.date),
+      labelPrice: `$${p.value.toFixed(2)}`,
+    };
+  });
+
+  const polylinePoints = coords.map((p) => `${p.x},${p.y}`).join(" ");
 
   return (
     <div style={{ width, maxWidth: "100%" }}>
@@ -116,9 +196,50 @@ function MiniTrend({ points, width = 240, height = 72 }) {
         width={width}
         height={height}
         viewBox={`0 0 ${width} ${height}`}
-        style={{ display: "block", maxWidth: "100%" }}
+        style={{ display: "block", maxWidth: "100%", overflow: "visible" }}
       >
-        <polyline fill="none" stroke="#0284c7" strokeWidth="2" points={coords} />
+        <polyline
+          fill="none"
+          stroke="#0284c7"
+          strokeWidth="2"
+          points={polylinePoints}
+        />
+
+        {coords.map((p, idx) => {
+          const isNearRight = p.x > width - 70;
+          const labelX = isNearRight ? p.x - 4 : p.x + 4;
+          const anchor = isNearRight ? "end" : "start";
+          const dateY = p.y - 8 < 10 ? p.y + 12 : p.y - 8;
+          const priceY = dateY + 11;
+
+          return (
+            <g key={`${p.labelDate}-${p.labelPrice}-${idx}`}>
+              <circle cx={p.x} cy={p.y} r="3" fill="#0284c7" />
+              {showPointLabels && (
+                <>
+                  <text
+                    x={labelX}
+                    y={dateY}
+                    fontSize="8"
+                    textAnchor={anchor}
+                    fill="#475569"
+                  >
+                    {p.labelDate}
+                  </text>
+                  <text
+                    x={labelX}
+                    y={priceY}
+                    fontSize="8"
+                    textAnchor={anchor}
+                    fill="#0f172a"
+                  >
+                    {p.labelPrice}
+                  </text>
+                </>
+              )}
+            </g>
+          );
+        })}
       </svg>
     </div>
   );
@@ -163,11 +284,20 @@ export default function App() {
   const [error, setError] = useState("");
   const [lastUpdated, setLastUpdated] = useState("");
   const [mapBounds, setMapBounds] = useState(null);
+  const [mapInstance, setMapInstance] = useState(null);
   const [selectedAirport, setSelectedAirport] = useState(null);
   const [highlightedAirportCode, setHighlightedAirportCode] = useState(null);
+  const [hoveredExtremeAirportCode, setHoveredExtremeAirportCode] = useState(null);
   const [nationalTrend, setNationalTrend] = useState([]);
   const [regionalTrend, setRegionalTrend] = useState([]);
   const [airportTrend, setAirportTrend] = useState([]);
+  const [coverageStats, setCoverageStats] = useState({
+    totalFuelAirports: 0,
+    coveredAirports: 0,
+    remainingAirports: 0,
+    attemptedLast24h: 0,
+    changedLast24h: 0,
+  });
   const [isMobile, setIsMobile] = useState(
     typeof window !== "undefined" ? window.innerWidth < 768 : false
   );
@@ -203,6 +333,10 @@ export default function App() {
           setAirports(Array.isArray(data.airports) ? data.airports : []);
           setLastUpdated(data.generatedAt || "");
           setNationalTrend(Array.isArray(data.nationalTrend) ? data.nationalTrend : []);
+          setSelectedAirport(null);
+          setAirportTrend([]);
+          setHoveredExtremeAirportCode(null);
+          setHighlightedAirportCode(null);
         }
       } catch (err) {
         if (!cancelled) setError(err.message || "Failed to load map data.");
@@ -216,6 +350,45 @@ export default function App() {
       cancelled = true;
     };
   }, [fuelType, serviceType]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadCoverageStats() {
+      try {
+        const res = await fetch("/.netlify/functions/coverage-stats");
+        if (!res.ok) throw new Error(`Coverage stats failed: ${res.status}`);
+
+        const data = await res.json();
+
+        if (!cancelled) {
+          setCoverageStats({
+            totalFuelAirports: Number(data.totalFuelAirports || 0),
+            coveredAirports: Number(data.coveredAirports || 0),
+            remainingAirports: Number(data.remainingAirports || 0),
+            attemptedLast24h: Number(data.attemptedLast24h || 0),
+            changedLast24h: Number(data.changedLast24h || 0),
+          });
+        }
+      } catch {
+        if (!cancelled) {
+          setCoverageStats({
+            totalFuelAirports: 0,
+            coveredAirports: 0,
+            remainingAirports: 0,
+            attemptedLast24h: 0,
+            changedLast24h: 0,
+          });
+        }
+      }
+    }
+
+    loadCoverageStats();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const filteredAirports = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -246,8 +419,18 @@ export default function App() {
     });
   }, [filteredAirports, mapBounds]);
 
+  const statAirports = useMemo(
+    () => filteredAirports.filter((airport) => !isCanadaAirport(airport)),
+    [filteredAirports]
+  );
+
+  const visibleStatAirports = useMemo(
+    () => visibleAirports.filter((airport) => !isCanadaAirport(airport)),
+    [visibleAirports]
+  );
+
   const nationalStats = useMemo(() => {
-    const values = filteredAirports
+    const values = statAirports
       .map((a) => Number(a.price))
       .filter((v) => Number.isFinite(v));
 
@@ -258,10 +441,10 @@ export default function App() {
       max: Math.max(...values),
       avg: values.reduce((sum, v) => sum + v, 0) / values.length,
     };
-  }, [filteredAirports]);
+  }, [statAirports]);
 
   const visibleStats = useMemo(() => {
-    const values = visibleAirports
+    const values = visibleStatAirports
       .map((a) => Number(a.price))
       .filter((v) => Number.isFinite(v));
 
@@ -272,17 +455,17 @@ export default function App() {
       max: Math.max(...values),
       avg: values.reduce((sum, v) => sum + v, 0) / values.length,
     };
-  }, [visibleAirports]);
+  }, [visibleStatAirports]);
 
   const visibleExtremes = useMemo(() => {
-    if (!visibleAirports.length) return { cheapest: null, priciest: null };
+    if (!visibleStatAirports.length) return { cheapest: null, priciest: null };
 
-    const sorted = [...visibleAirports].sort((a, b) => Number(a.price) - Number(b.price));
+    const sorted = [...visibleStatAirports].sort((a, b) => Number(a.price) - Number(b.price));
     return {
       cheapest: sorted[0],
       priciest: sorted[sorted.length - 1],
     };
-  }, [visibleAirports]);
+  }, [visibleStatAirports]);
 
   const visibleVsNational = useMemo(() => {
     if (visibleStats.avg == null || nationalStats.avg == null) return null;
@@ -294,27 +477,39 @@ export default function App() {
     };
   }, [visibleStats, nationalStats]);
 
-  useEffect(() => {
-    const groups = new Map();
+  const coveragePercent =
+    coverageStats.totalFuelAirports > 0
+      ? (coverageStats.coveredAirports / coverageStats.totalFuelAirports) * 100
+      : 0;
 
-    for (const airport of visibleAirports) {
-      const key = airport.reported_date || "Unknown";
-      const price = Number(airport.price);
-      if (!Number.isFinite(price)) continue;
+useEffect(() => {
+  const groups = new Map();
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - 90);
 
-      if (!groups.has(key)) groups.set(key, []);
-      groups.get(key).push(price);
-    }
+  for (const airport of visibleStatAirports) {
+    const key = airport.reported_date;
+    const price = Number(airport.price);
+    if (!key || !Number.isFinite(price)) continue;
 
-    const points = [...groups.entries()]
-      .map(([date, values]) => ({
-        date,
-        avg_price: values.reduce((sum, v) => sum + v, 0) / values.length,
-      }))
-      .sort((a, b) => String(a.date).localeCompare(String(b.date)));
+    const d = new Date(key);
+    if (Number.isNaN(d.getTime())) continue;
+    if (d < cutoff) continue;
 
-    setRegionalTrend(points);
-  }, [visibleAirports]);
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(price);
+  }
+
+  const points = [...groups.entries()]
+    .map(([date, values]) => ({
+      date,
+      avg_price: values.reduce((sum, v) => sum + v, 0) / values.length,
+    }))
+    .sort((a, b) => String(a.date).localeCompare(String(b.date)));
+
+  setRegionalTrend(points);
+}, [visibleStatAirports]);
+
 
   useEffect(() => {
     let cancelled = false;
@@ -349,6 +544,20 @@ export default function App() {
       cancelled = true;
     };
   }, [selectedAirport, fuelType, serviceType]);
+
+  function focusAirportOnMap(airport) {
+    if (!airport || !mapInstance) return;
+    if (!Number.isFinite(airport.lat) || !Number.isFinite(airport.lon)) return;
+
+    setSelectedAirport(airport);
+    setHighlightedAirportCode(airport.airport_code);
+
+    const nextZoom = Math.max(mapInstance.getZoom(), 8);
+    mapInstance.flyTo([airport.lat, airport.lon], nextZoom, {
+      animate: true,
+      duration: 0.8,
+    });
+  }
 
   const panelContent = (
     <>
@@ -411,8 +620,8 @@ export default function App() {
         </div>
 
         <PanelSection title="Airports shown" icon={<MapPinned size={14} />}>
-          <div style={bigValueStyle}>{visibleAirports.length}</div>
-          <div style={tinyMutedStyle}>Visible / matched: {filteredAirports.length}</div>
+          <div style={bigValueStyle}>{visibleStatAirports.length}</div>
+          <div style={tinyMutedStyle}>Visible / matched: {statAirports.length}</div>
         </PanelSection>
 
         <PanelSection title="Visible average" icon={<Filter size={14} />}>
@@ -454,22 +663,43 @@ export default function App() {
             <>
               <div
                 style={{ paddingTop: 4, fontSize: 16, fontWeight: 700, cursor: "pointer" }}
-                onMouseEnter={() => setHighlightedAirportCode(visibleExtremes.cheapest.airport_code)}
-                onMouseLeave={() => setHighlightedAirportCode(null)}
+                onMouseEnter={() => {
+                  setHighlightedAirportCode(visibleExtremes.cheapest.airport_code);
+                  setHoveredExtremeAirportCode(visibleExtremes.cheapest.airport_code);
+                }}
+                onMouseLeave={() => {
+                  setHighlightedAirportCode(null);
+                  setHoveredExtremeAirportCode(null);
+                }}
+                onClick={() => focusAirportOnMap(visibleExtremes.cheapest)}
               >
                 {visibleExtremes.cheapest.airport_code}
               </div>
               <div
                 style={{ cursor: "pointer" }}
-                onMouseEnter={() => setHighlightedAirportCode(visibleExtremes.cheapest.airport_code)}
-                onMouseLeave={() => setHighlightedAirportCode(null)}
+                onMouseEnter={() => {
+                  setHighlightedAirportCode(visibleExtremes.cheapest.airport_code);
+                  setHoveredExtremeAirportCode(visibleExtremes.cheapest.airport_code);
+                }}
+                onMouseLeave={() => {
+                  setHighlightedAirportCode(null);
+                  setHoveredExtremeAirportCode(null);
+                }}
+                onClick={() => focusAirportOnMap(visibleExtremes.cheapest)}
               >
                 {visibleExtremes.cheapest.airport_name}
               </div>
               <div
                 style={{ color: "#64748b", cursor: "pointer" }}
-                onMouseEnter={() => setHighlightedAirportCode(visibleExtremes.cheapest.airport_code)}
-                onMouseLeave={() => setHighlightedAirportCode(null)}
+                onMouseEnter={() => {
+                  setHighlightedAirportCode(visibleExtremes.cheapest.airport_code);
+                  setHoveredExtremeAirportCode(visibleExtremes.cheapest.airport_code);
+                }}
+                onMouseLeave={() => {
+                  setHighlightedAirportCode(null);
+                  setHoveredExtremeAirportCode(null);
+                }}
+                onClick={() => focusAirportOnMap(visibleExtremes.cheapest)}
               >
                 {toDisplayPrice(visibleExtremes.cheapest.price)}
               </div>
@@ -485,22 +715,43 @@ export default function App() {
             <>
               <div
                 style={{ paddingTop: 4, fontSize: 16, fontWeight: 700, cursor: "pointer" }}
-                onMouseEnter={() => setHighlightedAirportCode(visibleExtremes.priciest.airport_code)}
-                onMouseLeave={() => setHighlightedAirportCode(null)}
+                onMouseEnter={() => {
+                  setHighlightedAirportCode(visibleExtremes.priciest.airport_code);
+                  setHoveredExtremeAirportCode(visibleExtremes.priciest.airport_code);
+                }}
+                onMouseLeave={() => {
+                  setHighlightedAirportCode(null);
+                  setHoveredExtremeAirportCode(null);
+                }}
+                onClick={() => focusAirportOnMap(visibleExtremes.priciest)}
               >
                 {visibleExtremes.priciest.airport_code}
               </div>
               <div
                 style={{ cursor: "pointer" }}
-                onMouseEnter={() => setHighlightedAirportCode(visibleExtremes.priciest.airport_code)}
-                onMouseLeave={() => setHighlightedAirportCode(null)}
+                onMouseEnter={() => {
+                  setHighlightedAirportCode(visibleExtremes.priciest.airport_code);
+                  setHoveredExtremeAirportCode(visibleExtremes.priciest.airport_code);
+                }}
+                onMouseLeave={() => {
+                  setHighlightedAirportCode(null);
+                  setHoveredExtremeAirportCode(null);
+                }}
+                onClick={() => focusAirportOnMap(visibleExtremes.priciest)}
               >
                 {visibleExtremes.priciest.airport_name}
               </div>
               <div
                 style={{ color: "#64748b", cursor: "pointer" }}
-                onMouseEnter={() => setHighlightedAirportCode(visibleExtremes.priciest.airport_code)}
-                onMouseLeave={() => setHighlightedAirportCode(null)}
+                onMouseEnter={() => {
+                  setHighlightedAirportCode(visibleExtremes.priciest.airport_code);
+                  setHoveredExtremeAirportCode(visibleExtremes.priciest.airport_code);
+                }}
+                onMouseLeave={() => {
+                  setHighlightedAirportCode(null);
+                  setHoveredExtremeAirportCode(null);
+                }}
+                onClick={() => focusAirportOnMap(visibleExtremes.priciest)}
               >
                 {toDisplayPrice(visibleExtremes.priciest.price)}
               </div>
@@ -508,6 +759,84 @@ export default function App() {
           ) : (
             <div style={{ paddingTop: 4, color: "#64748b" }}>N/A</div>
           )}
+        </div>
+
+        <div style={cardStyle}>
+          <div style={{ fontSize: 14, fontWeight: 600, color: "#334155", marginBottom: 8 }}>
+            Collection coverage
+          </div>
+
+          <div style={{ fontSize: 28, fontWeight: 700, color: "#0f172a" }}>
+            {coverageStats.coveredAirports.toLocaleString()}
+            <span style={{ fontSize: 16, fontWeight: 500, color: "#64748b" }}>
+              {" "}
+              / {coverageStats.totalFuelAirports.toLocaleString()}
+            </span>
+          </div>
+
+          <div style={{ fontSize: 12, color: "#64748b", marginTop: 4 }}>
+            Remaining: {coverageStats.remainingAirports.toLocaleString()}
+          </div>
+
+          <div
+            style={{
+              marginTop: 10,
+              height: 10,
+              width: "100%",
+              borderRadius: 999,
+              background: "#e2e8f0",
+              overflow: "hidden",
+            }}
+          >
+            <div
+              style={{
+                height: "100%",
+                width: `${coveragePercent.toFixed(1)}%`,
+                background: "#2563eb",
+              }}
+            />
+          </div>
+
+          <div style={{ fontSize: 12, color: "#64748b", marginTop: 6 }}>
+            {coveragePercent.toFixed(1)}% collected
+          </div>
+
+          <div
+            style={{
+              marginTop: 12,
+              display: "grid",
+              gridTemplateColumns: "1fr 1fr",
+              gap: 8,
+            }}
+          >
+            <div
+              style={{
+                borderRadius: 12,
+                background: "#f8fafc",
+                padding: 10,
+                border: "1px solid #e2e8f0",
+              }}
+            >
+              <div style={{ fontSize: 12, color: "#64748b" }}>Last 24h attempted</div>
+              <div style={{ fontSize: 20, fontWeight: 700, color: "#0f172a", marginTop: 2 }}>
+                {coverageStats.attemptedLast24h.toLocaleString()}
+              </div>
+            </div>
+
+            <div
+              style={{
+                borderRadius: 12,
+                background: "#f8fafc",
+                padding: 10,
+                border: "1px solid #e2e8f0",
+              }}
+            >
+              <div style={{ fontSize: 12, color: "#64748b" }}>Last 24h changed</div>
+              <div style={{ fontSize: 20, fontWeight: 700, color: "#0f172a", marginTop: 2 }}>
+                {coverageStats.changedLast24h.toLocaleString()}
+              </div>
+            </div>
+          </div>
         </div>
 
         <div
@@ -569,68 +898,85 @@ export default function App() {
     </>
   );
 
-  const renderMarkers = () =>
-    filteredAirports.map((airport) => {
-      const price = Number(airport.price);
-      const validPrice = Number.isFinite(price) ? price : null;
-      const color = priceToColor(validPrice, visibleStats.min, visibleStats.max);
+  const renderMarkers = () => (
+    <>
+      {filteredAirports.map((airport) => {
+        const price = Number(airport.price);
+        const validPrice = Number.isFinite(price) ? price : null;
+        const isCanada = isCanadaAirport(airport);
+        const color = isCanada ? "#000000" : priceToColor(validPrice, visibleStats.min, visibleStats.max);
 
-      return (
-        <CircleMarker
-          key={`${airport.airport_code}-${airport.fbo_name}-${airport.fuel_type}-${airport.service_type}`}
-          center={[airport.lat, airport.lon]}
-          radius={8}
-          pathOptions={{
-            color: highlightedAirportCode === airport.airport_code ? "#111827" : color,
-            fillColor: color,
-            fillOpacity: 0.85,
-            weight: highlightedAirportCode === airport.airport_code ? 3 : 1,
-          }}
-          eventHandlers={{ click: () => setSelectedAirport(airport) }}
-        >
-          <Tooltip direction="top" offset={[0, -10]} opacity={1}>
-            <div style={{ fontSize: 14, fontWeight: 600 }}>
-              {airport.airport_code} · {toDisplayPrice(airport.price)}
-            </div>
-          </Tooltip>
+        return (
+          <CircleMarker
+            key={`${airport.airport_code}-${airport.fbo_name}-${airport.fuel_type}-${airport.service_type}`}
+            center={[airport.lat, airport.lon]}
+            radius={8}
+            pathOptions={{
+              color: highlightedAirportCode === airport.airport_code ? "#111827" : color,
+              fillColor: color,
+              fillOpacity: 0.85,
+              weight: highlightedAirportCode === airport.airport_code ? 3 : 1,
+            }}
+            eventHandlers={{ click: () => setSelectedAirport(airport) }}
+          >
+            <Tooltip direction="top" offset={[0, -10]} opacity={1}>
+              <div style={{ fontSize: 14, fontWeight: 600 }}>
+                {airport.airport_code} · {toDisplayPrice(airport.price)}
+              </div>
+            </Tooltip>
 
-          <Popup>
-            <div style={{ minWidth: 220, display: "grid", gap: 4, fontSize: 14 }}>
-              <div style={{ fontSize: 16, fontWeight: 700 }}>{airport.airport_code}</div>
-              <div>{airport.airport_name || "Unknown airport"}</div>
-              <div style={{ color: "#475569" }}>
-                {airport.city}, {airport.state}
-              </div>
-              <div style={{ paddingTop: 8 }}>
-                <span style={{ fontWeight: 600 }}>FBO:</span> {airport.fbo_name}
-              </div>
-              <div>
-                <span style={{ fontWeight: 600 }}>Fuel:</span> {airport.fuel_type}_{airport.service_type}
-              </div>
-              <div>
-                <span style={{ fontWeight: 600 }}>Price:</span> {toDisplayPrice(airport.price)}
-              </div>
-              <div>
-                <span style={{ fontWeight: 600 }}>Reported:</span> {airport.reported_date || "N/A"}
-              </div>
-              <div>
-                <span style={{ fontWeight: 600 }}>Guaranteed:</span> {airport.guaranteed ? "Yes" : "No"}
-              </div>
-              <div style={{ paddingTop: 8 }}>
-                <div style={{ marginBottom: 4, fontSize: 12, fontWeight: 600, color: "#475569" }}>
-                  Recent airport trend
+            <Popup>
+              <div style={{ minWidth: 220, display: "grid", gap: 4, fontSize: 14 }}>
+                <div style={{ fontSize: 16, fontWeight: 700 }}>{airport.airport_code}</div>
+                <div>{airport.airport_name || "Unknown airport"}</div>
+                <div style={{ color: "#475569" }}>
+                  {airport.city}, {airport.state}
                 </div>
-                {selectedAirport?.airport_code === airport.airport_code ? (
-                  <MiniTrend points={airportTrend} />
-                ) : (
-                  <div style={{ fontSize: 12, color: "#64748b" }}>Tap marker to load trend</div>
-                )}
+                <div style={{ paddingTop: 8 }}>
+                  <span style={{ fontWeight: 600 }}>FBO:</span> {airport.fbo_name}
+                </div>
+                <div>
+                  <span style={{ fontWeight: 600 }}>Fuel:</span> {airport.fuel_type}_{airport.service_type}
+                </div>
+                <div>
+                  <span style={{ fontWeight: 600 }}>Price:</span> {toDisplayPrice(airport.price)}
+                </div>
+                <div>
+                  <span style={{ fontWeight: 600 }}>Reported:</span> {airport.reported_date || "N/A"}
+                </div>
+                <div>
+                  <span style={{ fontWeight: 600 }}>Guaranteed:</span> {airport.guaranteed ? "Yes" : "No"}
+                </div>
+                <div style={{ paddingTop: 8 }}>
+                  <div style={{ marginBottom: 4, fontSize: 12, fontWeight: 600, color: "#475569" }}>
+                    Recent airport trend
+                  </div>
+                  {selectedAirport?.airport_code === airport.airport_code ? (
+                    <MiniTrend points={airportTrend} width={260} height={110} showPointLabels />
+                  ) : (
+                    <div style={{ fontSize: 12, color: "#64748b" }}>Tap marker to load trend</div>
+                  )}
+                </div>
               </div>
-            </div>
-          </Popup>
-        </CircleMarker>
-      );
-    });
+            </Popup>
+          </CircleMarker>
+        );
+      })}
+
+      {hoveredExtremeAirportCode &&
+        filteredAirports
+          .filter((airport) => airport.airport_code === hoveredExtremeAirportCode)
+          .map((airport) => (
+            <Marker
+              key={`top-star-${airport.airport_code}-${airport.fbo_name}`}
+              position={[airport.lat, airport.lon]}
+              icon={topStarIcon}
+              zIndexOffset={100000}
+              interactive={false}
+            />
+          ))}
+    </>
+  );
 
   return (
     <div
@@ -651,6 +997,7 @@ export default function App() {
                 attribution="&copy; OpenStreetMap contributors"
                 url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
               />
+              <MapInstanceCapture onReady={setMapInstance} />
               <FitBounds airports={filteredAirports} />
               <MapBoundsWatcher onBoundsChange={setMapBounds} />
               {renderMarkers()}
@@ -780,6 +1127,7 @@ export default function App() {
                 attribution="&copy; OpenStreetMap contributors"
                 url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
               />
+              <MapInstanceCapture onReady={setMapInstance} />
               <FitBounds airports={filteredAirports} />
               <MapBoundsWatcher onBoundsChange={setMapBounds} />
               {renderMarkers()}

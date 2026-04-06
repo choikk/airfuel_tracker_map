@@ -6,7 +6,7 @@ export default async (req) => {
     const fuelType = (url.searchParams.get("fuelType") || "100LL").toUpperCase();
     const serviceType = (url.searchParams.get("serviceType") || "FULL").toUpperCase();
 
-    const allowedFuelTypes = ["100LL", "JET_A", "MOGAS", "UL94", "UL91"];
+    const allowedFuelTypes = ["100LL", "JET_A", "SAF", "MOGAS", "UL94", "UL91"];
     const allowedServiceTypes = ["FULL", "SELF", "RA"];
 
     if (!allowedFuelTypes.includes(fuelType)) {
@@ -64,19 +64,21 @@ export default async (req) => {
 
     const nationalTrend = await sql`
       SELECT
-        day::text AS date,
-        ROUND(AVG(price)::numeric, 2) AS avg_price
-      FROM (
-        SELECT
-          valid_from::date AS day,
-          price
-        FROM price_periods
-        WHERE fuel_type = ${fuelType}
-          AND service_type = ${serviceType}
-          AND valid_from >= NOW() - INTERVAL '90 days'
-      ) t
-      GROUP BY day
-      ORDER BY day ASC
+        p.reported_date::text AS date,
+        ROUND(AVG(p.price)::numeric, 2) AS avg_price
+      FROM price_periods p
+      JOIN airports a
+        ON a.airport_code = p.airport_code
+      WHERE p.valid_to IS NULL
+        AND p.fuel_type = ${fuelType}
+        AND p.service_type = ${serviceType}
+        AND p.reported_date IS NOT NULL
+        AND p.reported_date >= CURRENT_DATE - INTERVAL '90 days'
+        AND a.lat IS NOT NULL
+        AND a.lon IS NOT NULL
+        AND UPPER(COALESCE(a.state, '')) NOT LIKE '%CANADA%'
+      GROUP BY p.reported_date
+      ORDER BY p.reported_date ASC
     `;
 
     return new Response(
@@ -107,4 +109,3 @@ export default async (req) => {
     );
   }
 };
-
