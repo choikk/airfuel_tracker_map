@@ -43,8 +43,10 @@ const topStarIcon = L.divIcon({
 
 function FitBounds({ airports }) {
   const map = useMap();
+  const [hasFit, setHasFit] = useState(false);
 
   useEffect(() => {
+    if (hasFit) return;
     if (!airports.length) return;
 
     const bounds = airports
@@ -55,11 +57,13 @@ function FitBounds({ airports }) {
 
     if (bounds.length === 1) {
       map.setView(bounds[0], 10);
+      setHasFit(true);
       return;
     }
 
     map.fitBounds(bounds, { padding: [24, 24] });
-  }, [airports, map]);
+    setHasFit(true);
+  }, [airports, map, hasFit]);
 
   return null;
 }
