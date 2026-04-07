@@ -43,7 +43,7 @@ const topStarIcon = L.divIcon({
 
 function FitBounds({ airports }) {
   const map = useMap();
-  const [hasFit, setHasFit] = useState(false);
+  const [hasFit, setHasFit] = React.useState(false);
 
   useEffect(() => {
     if (hasFit) return;
@@ -424,6 +424,42 @@ export default function App() {
   );
   const [mobilePanelOpen, setMobilePanelOpen] = useState(false);
 
+  function showCredits() {
+    window.alert(
+`✈️  AirFuel Tracker
+
+Software Version: v0.1
+Last Modified: 2026-04-07
+Database Version: ${lastUpdated}
+
+Built with ⌨️ + ✈️ with lots of ❤️💙
+© Copyright 2026 pilot.drchoi@gmail.com. All rights reserved.`
+    );
+  }
+
+  useEffect(() => {
+    document.title = "✈️ AirFuel Tracker";
+  }, []);
+
+  useEffect(() => {
+    const makeSvgDataUrl = (emoji) =>
+      `data:image/svg+xml,${encodeURIComponent(
+        `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+          <text x="50%" y="50%" dominant-baseline="central" text-anchor="middle" font-size="52">
+            ${emoji}
+          </text>
+        </svg>`
+      )}`;
+
+    let link = document.querySelector("link[rel='icon']");
+    if (!link) {
+      link = document.createElement("link");
+      link.setAttribute("rel", "icon");
+      document.head.appendChild(link);
+    }
+    link.setAttribute("href", makeSvgDataUrl("✈️"));
+  }, []);
+
   useEffect(() => {
     function handleResize() {
       const mobile = window.innerWidth < 768;
@@ -697,10 +733,16 @@ export default function App() {
         >
           <Fuel size={20} />
         </div>
-        <div>
-          <h1 style={{ margin: 0, fontSize: 28, fontWeight: 700 }}>AirFuel Tracker</h1>
+        <div style={{ minWidth: 0 }}>
+          <h1
+            onClick={showCredits}
+            style={{ margin: 0, fontSize: 28, fontWeight: 700, cursor: "pointer" }}
+            title="Show credits"
+          >
+            AirFuel Tracker
+          </h1>
           <p style={{ margin: "4px 0 0", fontSize: 14, color: "#64748b" }}>
-            Live airport fuel map
+            Live airport fuel price and trend. 
           </p>
         </div>
       </div>
@@ -740,7 +782,6 @@ export default function App() {
         </div>
 
         <div style={cardStyle}>
-
           <div
             style={{
               marginTop: 2,
@@ -774,7 +815,6 @@ export default function App() {
         </div>
 
         <div style={cardStyle}>
-
           <div
             style={{
               marginTop: 2,
@@ -966,7 +1006,7 @@ export default function App() {
                 border: "1px solid #e2e8f0",
               }}
             >
-              <div style={{ fontSize: 12, color: "#64748b" }}>Last 24h attempted</div>
+              <div style={{ fontSize: 12, color: "#64748b" }}>Last 24h scanned</div>
               <div style={{ fontSize: 20, fontWeight: 700, color: "#0f172a", marginTop: 2 }}>
                 {coverageStats.attemptedLast24h.toLocaleString()}
               </div>
@@ -985,25 +1025,6 @@ export default function App() {
                 {coverageStats.changedLast24h.toLocaleString()}
               </div>
             </div>
-          </div>
-        </div>
-
-        <div
-          style={{
-            borderRadius: 16,
-            background: "#f8fafc",
-            padding: 12,
-            fontSize: 14,
-            color: "#475569",
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 600, color: "#1e293b" }}>
-            <RefreshCw size={14} />
-            Data status
-          </div>
-          <div style={{ paddingTop: 8 }}>{loading ? "Loading…" : error ? error : "Loaded"}</div>
-          <div style={{ paddingTop: 4, fontSize: 12, color: "#64748b", wordBreak: "break-all" }}>
-            {lastUpdated ? `Generated: ${lastUpdated}` : "No timestamp yet"}
           </div>
         </div>
 
@@ -1044,6 +1065,25 @@ export default function App() {
             height={150}
           />
         </PanelSection>
+
+        <div
+          style={{
+            borderRadius: 16,
+            background: "#f8fafc",
+            padding: 12,
+            fontSize: 14,
+            color: "#475569",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 600, color: "#1e293b" }}>
+            <RefreshCw size={14} />
+            Data status
+          </div>
+          <div style={{ paddingTop: 8 }}>{loading ? "Loading…" : error ? error : "Loaded"}</div>
+          <div style={{ paddingTop: 4, fontSize: 12, color: "#64748b", wordBreak: "break-all" }}>
+            {lastUpdated ? `Generated: ${lastUpdated}` : "No timestamp yet"}
+          </div>
+        </div>
       </div>
     </>
   );
