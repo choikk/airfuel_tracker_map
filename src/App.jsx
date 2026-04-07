@@ -46,7 +46,8 @@ function FitBounds({ airports }) {
   const [hasFit, setHasFit] = React.useState(false);
 
   useEffect(() => {
-    if (hasFit || !airports.length) return;
+    if (hasFit) return;
+    if (!airports.length) return;
 
     const bounds = airports
       .filter((a) => Number.isFinite(a.lat) && Number.isFinite(a.lon))
@@ -56,9 +57,11 @@ function FitBounds({ airports }) {
 
     if (bounds.length === 1) {
       map.setView(bounds[0], 10);
-    } else {
-      map.fitBounds(bounds, { padding: [24, 24] });
+      setHasFit(true);
+      return;
     }
+
+    map.fitBounds(bounds, { padding: [24, 24] });
     setHasFit(true);
   }, [airports, map, hasFit]);
 
@@ -67,8 +70,12 @@ function FitBounds({ airports }) {
 
 function MapBoundsWatcher({ onBoundsChange }) {
   const map = useMapEvents({
-    moveend() { onBoundsChange(map.getBounds()); },
-    zoomend() { onBoundsChange(map.getBounds()); },
+    moveend() {
+      onBoundsChange(map.getBounds());
+    },
+    zoomend() {
+      onBoundsChange(map.getBounds());
+    },
   });
 
   useEffect(() => {
@@ -80,234 +87,12 @@ function MapBoundsWatcher({ onBoundsChange }) {
 
 function MapInstanceCapture({ onReady }) {
   const map = useMap();
-  useEffect(() => onReady(map), [map, onReady]);
+
+  useEffect(() => {
+    onReady(map);
+  }, [map, onReady]);
+
   return null;
-}
-
-// ==================== 개선된 MiniTrend ====================
-function MiniTrend({ points, width = 260, height = 110, showPointLabels = false }) {
-  if (!points || points.length < 2) {
-    return <div style={{ fontSize: 12, color: "#64748b" }}>Not enough history</div>;
-  }
-
-  const cleanPoints = points
-    .map((p) => {
-      const value = Number(p.avg_price ?? p.price);
-      if (!Number.isFinite(value)) return null;
-
-      const rawDate = p.reported_date || p.date || p.valid_from || "";
-      const parsedTime = Date.parse(rawDate);
-
-      return {
-        raw: p,
-        value,
-        date: rawDate,
-        sortTime: Number.isNaN(parsedTime) ? null : parsedTime,
-      };
-    })
-    .filter(Boolean)
-    .sort((a, b) => (a.sortTime ?? 0) - (b.sortTime ?? 0));
-
-  if (cleanPoints.length < 2) {
-    return <div style={{ fontSize: 12, color: "#64748b" }}>Not enough history</div>;
-  }
-
-  const values = cleanPoints.map((p) => p.value);
-  const min = Math.min(...values);
-  const max = Math.max(...values);
-
-  const paddingLeft = 10;
-  const paddingRight = showPointLabels ? 44 : 10;
-  const paddingTop = showPointLabels ? 20 : 8;
-  const paddingBottom = showPointLabels ? 18 : 8;
-
-  const usableW = width - paddingLeft - paddingRight;
-  const usableH = height - paddingTop - paddingBottom;
-
-  const coords = cleanPoints.map((p, i) => {
-    const x = paddingLeft + (i / (cleanPoints.length - 1)) * usableW;
-    const y = paddingTop + (max === min ? usableH / 2 : (1 - (p.value - min) / (max - min)) * usableH);
-
-    return {
-      ...p,
-      x,
-      y,
-      labelDate: formatMiniTrendDate(p.date),
-      labelPrice: `$${p.value.toFixed(2)}`,
-    };
-  });
-
-  const polylinePoints = coords.map((p) => `${p.x},${p.y}`).join(" ");
-
-  return (
-    <div style={{ width, maxWidth: "100%" }}>
-      <svg
-        width={width}
-        height={height}
-        viewBox={`0 0 ${width} ${height}`}
-        style={{ display: "block", maxWidth: "100%", overflow: "visible" }}
-      >
-        <polyline fill="none" stroke="#0284c7" strokeWidth="2" points={polylinePoints} />
-
-        {coords.map((p, idx) => {
-          const isNearRight = p.x > width - 70;
-          const labelX = isNearRight ? p.x - 4 : p.x + 4;
-          const anchor = isNearRight ? "end" : "start";
-          const dateY = p.y - 8 < 10 ? p.y + 12 : p.y - 8;
-          const priceY = dateY + 11;
-
-          return (
-            <g key={idx}>
-              <circle cx={p.x} cy={p.y} r="3" fill="#0284c7" />
-              {showPointLabels && (
-                <>
-                  <text
-                    x={labelX}
-                    y={dateY}
-                    fontSize="8"
-                    textAnchor={anchor}
-                    fill="#475569"
-                  >
-                    {p.labelDate}
-                  </text>
-                  <text
-                    x={labelX}
-                    y={priceY}
-                    fontSize="8"
-                    textAnchor={anchor}
-                    fill="#0f172a"
-                  >
-                    {p.labelPrice}
-                  </text>
-                </>
-              )}
-            </g>
-          );
-        })}
-      </svg>
-    </div>
-  );
-}
-
-// ==================== 개선된 DualTrend ====================
-function DualTrend({ nationalPoints, regionalPoints, width = 260, height = 150 }) {
-  const normalize = (points) =>
-    (points || [])
-      .map((p) => {
-        const value = Number(p.avg_price ?? p.price);
-        const rawDate = p.date || p.reported_date || p.valid_from || "";
-        const t = Date.parse(rawDate);
-        if (!Number.isFinite(value) || Number.isNaN(t)) return null;
-        return { value, date: rawDate, time: t };
-      })
-      .filter(Boolean)
-      .sort((a, b) => a.time - b.time);
-
-  const national = normalize(nationalPoints);
-  const regional = normalize(regionalPoints);
-
-  if (national.length < 2 && regional.length < 2) {
-    return <div style={{ fontSize: 12, color: "#64748b" }}>Not enough history</div>;
-  }
-
-  const all = [...national, ...regional];
-  if (all.length === 0) {
-    return <div style={{ fontSize: 12, color: "#64748b" }}>Not enough history</div>;
-  }
-
-  const minTime = Math.min(...all.map((p) => p.time));
-  const maxTime = Math.max(...all.map((p) => p.time));
-  const minValue = Math.min(...all.map((p) => p.value));
-  const maxValue = Math.max(...all.map((p) => p.value));
-
-  const paddingLeft = 10;
-  const paddingRight = 10;
-  const paddingTop = 10;
-  const paddingBottom = 20;
-
-  const usableW = width - paddingLeft - paddingRight;
-  const usableH = height - paddingTop - paddingBottom;
-
-  const toCoords = (points) =>
-    points.map((p) => ({
-      ...p,
-      x: paddingLeft + (maxTime === minTime ? usableW / 2 : ((p.time - minTime) / (maxTime - minTime)) * usableW),
-      y: paddingTop + (maxValue === minValue ? usableH / 2 : (1 - (p.value - minValue) / (maxValue - minValue)) * usableH),
-    }));
-
-  const nationalCoords = toCoords(national);
-  const regionalCoords = toCoords(regional);
-
-  return (
-    <div style={{ width, maxWidth: "100%" }}>
-      <svg
-        width={width}
-        height={height}
-        viewBox={`0 0 ${width} ${height}`}
-        style={{ display: "block", maxWidth: "100%" }}
-      >
-        {nationalCoords.length >= 2 && (
-          <polyline
-            fill="none"
-            stroke="#0284c7"
-            strokeWidth="2"
-            points={nationalCoords.map((p) => `${p.x},${p.y}`).join(" ")}
-          />
-        )}
-        {regionalCoords.length >= 2 && (
-          <polyline
-            fill="none"
-            stroke="#dc2626"
-            strokeWidth="2"
-            points={regionalCoords.map((p) => `${p.x},${p.y}`).join(" ")}
-          />
-        )}
-
-        {nationalCoords.map((p, idx) => (
-          <circle key={`n-${idx}`} cx={p.x} cy={p.y} r="2.5" fill="#0284c7" />
-        ))}
-        {regionalCoords.map((p, idx) => (
-          <circle key={`r-${idx}`} cx={p.x} cy={p.y} r="2.5" fill="#dc2626" />
-        ))}
-      </svg>
-
-      <div
-        style={{
-          marginTop: 8,
-          display: "flex",
-          gap: 14,
-          flexWrap: "wrap",
-          fontSize: 12,
-          color: "#475569",
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <span
-            style={{
-              width: 10,
-              height: 10,
-              borderRadius: 999,
-              background: "#0284c7",
-              display: "inline-block",
-            }}
-          />
-          National average
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <span
-            style={{
-              width: 10,
-              height: 10,
-              borderRadius: 999,
-              background: "#dc2626",
-              display: "inline-block",
-            }}
-          />
-          Visible region
-        </div>
-      </div>
-    </div>
-  );
 }
 
 function priceToColor(price, min, max) {
@@ -348,6 +133,269 @@ function formatMiniTrendDate(value) {
   return `${mm}-${dd}-${yyyy}`;
 }
 
+function MiniTrend({ points, width = 260, height = 110, showPointLabels = false }) {
+  if (!points || points.length < 2) {
+    return <div style={{ fontSize: 12, color: "#64748b" }}>Not enough history</div>;
+  }
+
+  const cleanPoints = points
+    .map((p) => {
+      const value = Number(p.avg_price ?? p.price);
+      if (!Number.isFinite(value)) return null;
+
+      const rawDate = p.reported_date || p.date || p.valid_from || "";
+      const parsedTime = Date.parse(rawDate);
+
+      return {
+        raw: p,
+        value,
+        date: rawDate,
+        sortTime: Number.isNaN(parsedTime) ? null : parsedTime,
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => {
+      if (a.sortTime != null && b.sortTime != null) return a.sortTime - b.sortTime;
+      if (a.sortTime != null) return -1;
+      if (b.sortTime != null) return 1;
+      return String(a.date).localeCompare(String(b.date));
+    });
+
+  if (cleanPoints.length < 2) {
+    return <div style={{ fontSize: 12, color: "#64748b" }}>Not enough history</div>;
+  }
+
+  const values = cleanPoints.map((p) => p.value);
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+
+  const paddingLeft = 10;
+  const paddingRight = showPointLabels ? 44 : 10;
+  const paddingTop = showPointLabels ? 20 : 8;
+  const paddingBottom = showPointLabels ? 18 : 8;
+
+  const usableW = width - paddingLeft - paddingRight;
+  const usableH = height - paddingTop - paddingBottom;
+
+  const coords = cleanPoints.map((p, i) => {
+    const x = paddingLeft + (i / Math.max(1, cleanPoints.length - 1)) * usableW;
+    const y =
+      paddingTop +
+      (max === min ? usableH / 2 : (1 - (p.value - min) / (max - min)) * usableH);
+
+    return {
+      ...p,
+      x,
+      y,
+      labelDate: formatMiniTrendDate(p.date),
+      labelPrice: `$${p.value.toFixed(2)}`,
+    };
+  });
+
+  const polylinePoints = coords.map((p) => `${p.x},${p.y}`).join(" ");
+
+  return (
+    <div style={{ width, maxWidth: "100%" }}>
+      <svg
+        width={width}
+        height={height}
+        viewBox={`0 0 ${width} ${height}`}
+        style={{ display: "block", maxWidth: "100%", overflow: "visible" }}
+      >
+        <polyline fill="none" stroke="#0284c7" strokeWidth="2" points={polylinePoints} />
+
+        {coords.map((p, idx) => {
+          const isNearRight = p.x > width - 70;
+          const labelX = isNearRight ? p.x - 4 : p.x + 4;
+          const anchor = isNearRight ? "end" : "start";
+          const dateY = p.y - 8 < 10 ? p.y + 12 : p.y - 8;
+          const priceY = dateY + 11;
+
+          return (
+            <g key={`${p.labelDate}-${p.labelPrice}-${idx}`}>
+              <circle cx={p.x} cy={p.y} r="3" fill="#0284c7" />
+              {showPointLabels && (
+                <>
+                  <text
+                    x={labelX}
+                    y={dateY}
+                    fontSize="8"
+                    textAnchor={anchor}
+                    fill="#475569"
+                  >
+                    {p.labelDate}
+                  </text>
+                  <text
+                    x={labelX}
+                    y={priceY}
+                    fontSize="8"
+                    textAnchor={anchor}
+                    fill="#0f172a"
+                  >
+                    {p.labelPrice}
+                  </text>
+                </>
+              )}
+            </g>
+          );
+        })}
+      </svg>
+    </div>
+  );
+}
+
+function DualTrend({ nationalPoints, regionalPoints, width = 260, height = 150 }) {
+  const normalize = (points) =>
+    (points || [])
+      .map((p) => {
+        const value = Number(p.avg_price ?? p.price);
+        const rawDate = p.date || p.reported_date || p.valid_from || "";
+        const t = Date.parse(rawDate);
+        if (!Number.isFinite(value) || Number.isNaN(t)) return null;
+        return {
+          value,
+          date: rawDate,
+          time: t,
+        };
+      })
+      .filter(Boolean)
+      .sort((a, b) => a.time - b.time);
+
+  const national = normalize(nationalPoints);
+  const regional = normalize(regionalPoints);
+
+  if (national.length < 2 && regional.length < 2) {
+    return <div style={{ fontSize: 12, color: "#64748b" }}>Not enough history</div>;
+  }
+
+  const all = [...national, ...regional];
+  const minTime = Math.min(...all.map((p) => p.time));
+  const maxTime = Math.max(...all.map((p) => p.time));
+  const minValue = Math.min(...all.map((p) => p.value));
+  const maxValue = Math.max(...all.map((p) => p.value));
+
+  const paddingLeft = 10;
+  const paddingRight = 10;
+  const paddingTop = 10;
+  const paddingBottom = 20;
+
+  const usableW = width - paddingLeft - paddingRight;
+  const usableH = height - paddingTop - paddingBottom;
+
+  const toCoords = (points) =>
+    points.map((p) => {
+      const x =
+        paddingLeft +
+        (maxTime === minTime ? usableW / 2 : ((p.time - minTime) / (maxTime - minTime)) * usableW);
+      const y =
+        paddingTop +
+        (maxValue === minValue
+          ? usableH / 2
+          : (1 - (p.value - minValue) / (maxValue - minValue)) * usableH);
+      return { ...p, x, y };
+    });
+
+  const nationalCoords = toCoords(national);
+  const regionalCoords = toCoords(regional);
+
+  const nationalPolyline = nationalCoords.map((p) => `${p.x},${p.y}`).join(" ");
+  const regionalPolyline = regionalCoords.map((p) => `${p.x},${p.y}`).join(" ");
+
+  return (
+    <div style={{ width, maxWidth: "100%" }}>
+      <svg
+        width={width}
+        height={height}
+        viewBox={`0 0 ${width} ${height}`}
+        style={{ display: "block", maxWidth: "100%" }}
+      >
+        {nationalCoords.length >= 2 && (
+          <polyline fill="none" stroke="#0284c7" strokeWidth="2" points={nationalPolyline} />
+        )}
+
+        {regionalCoords.length >= 2 && (
+          <polyline fill="none" stroke="#dc2626" strokeWidth="2" points={regionalPolyline} />
+        )}
+
+        {nationalCoords.map((p, idx) => (
+          <circle key={`n-${idx}`} cx={p.x} cy={p.y} r="2.5" fill="#0284c7" />
+        ))}
+
+        {regionalCoords.map((p, idx) => (
+          <circle key={`r-${idx}`} cx={p.x} cy={p.y} r="2.5" fill="#dc2626" />
+        ))}
+      </svg>
+
+      <div
+        style={{
+          marginTop: 8,
+          display: "flex",
+          gap: 14,
+          flexWrap: "wrap",
+          fontSize: 12,
+          color: "#475569",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <span
+            style={{
+              width: 10,
+              height: 10,
+              borderRadius: 999,
+              background: "#0284c7",
+              display: "inline-block",
+            }}
+          />
+          <span>National average</span>
+        </div>
+
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <span
+            style={{
+              width: 10,
+              height: 10,
+              borderRadius: 999,
+              background: "#dc2626",
+              display: "inline-block",
+            }}
+          />
+          <span>Visible region</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PanelSection({ title, icon, children }) {
+  return (
+    <div
+      style={{
+        borderRadius: 16,
+        border: "1px solid #e2e8f0",
+        padding: 12,
+        background: "#fff",
+        boxShadow: "0 1px 2px rgba(0,0,0,0.04)",
+      }}
+    >
+      <div
+        style={{
+          marginBottom: 8,
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          fontSize: 14,
+          fontWeight: 600,
+          color: "#334155",
+        }}
+      >
+        {icon}
+        {title}
+      </div>
+      {children}
+    </div>
+  );
+}
+
 export default function App() {
   const [fuelType, setFuelType] = useState("100LL");
   const [serviceType, setServiceType] = useState("FULL");
@@ -364,8 +412,6 @@ export default function App() {
   const [nationalTrend, setNationalTrend] = useState([]);
   const [regionalTrend, setRegionalTrend] = useState([]);
   const [airportTrend, setAirportTrend] = useState([]);
-  const [isLoadingTrend, setIsLoadingTrend] = useState(false);
-
   const [coverageStats, setCoverageStats] = useState({
     totalFuelAirports: 0,
     coveredAirports: 0,
@@ -373,60 +419,59 @@ export default function App() {
     attemptedLast24h: 0,
     changedLast24h: 0,
   });
-
   const [isMobile, setIsMobile] = useState(
     typeof window !== "undefined" ? window.innerWidth < 768 : false
   );
   const [mobilePanelOpen, setMobilePanelOpen] = useState(false);
 
-  const databaseVersion = lastUpdated ? String(lastUpdated).slice(0, 10) : "Unknown";
-
   function showCredits() {
     window.alert(
-      `AirFuel Tracker\n\nSoftware Version: v0.1\nLast Modified: 2026-04-07\nDatabase Version: ${databaseVersion}\n\nBuilt with ⌨️ + ✈️ with lots of ❤️💙\n© Copyright 2026 pilot.drchoi@gmail.com. All rights reserved.`
+`✈️  AirFuel Tracker
+
+Software Version: v0.1
+Last Modified: 2026-04-07
+Database Version: ${lastUpdated}
+
+Built with ⌨️ + ✈️ with lots of ❤️💙
+© Copyright 2026 pilot.drchoi@gmail.com. All rights reserved.`
     );
   }
 
-  // Touch handlers for mobile panel
-  const [touchStartY, setTouchStartY] = useState(null);
-  const [touchCurrentY, setTouchCurrentY] = useState(null);
+  useEffect(() => {
+    document.title = "✈️ AirFuel Tracker";
+  }, []);
 
-  function handlePanelTouchStart(e) {
-    const y = e.touches?.[0]?.clientY;
-    if (typeof y === "number") {
-      setTouchStartY(y);
-      setTouchCurrentY(y);
+  useEffect(() => {
+    const makeSvgDataUrl = (emoji) =>
+      `data:image/svg+xml,${encodeURIComponent(
+        `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+          <text x="50%" y="50%" dominant-baseline="central" text-anchor="middle" font-size="52">
+            ${emoji}
+          </text>
+        </svg>`
+      )}`;
+
+    let link = document.querySelector("link[rel='icon']");
+    if (!link) {
+      link = document.createElement("link");
+      link.setAttribute("rel", "icon");
+      document.head.appendChild(link);
     }
-  }
+    link.setAttribute("href", makeSvgDataUrl("✈️"));
+  }, []);
 
-  function handlePanelTouchMove(e) {
-    const y = e.touches?.[0]?.clientY;
-    if (typeof y === "number") setTouchCurrentY(y);
-  }
-
-  function handlePanelTouchEnd() {
-    if (touchStartY == null || touchCurrentY == null) return;
-    const deltaY = touchCurrentY - touchStartY;
-    if (deltaY > 50) setMobilePanelOpen(false);
-    else if (deltaY < -50) setMobilePanelOpen(true);
-
-    setTouchStartY(null);
-    setTouchCurrentY(null);
-  }
-
-  // Resize handler
   useEffect(() => {
     function handleResize() {
       const mobile = window.innerWidth < 768;
       setIsMobile(mobile);
       if (!mobile) setMobilePanelOpen(false);
     }
+
     handleResize();
     window.addEventListener("resize", handleResize);
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
-  // Load airports data
   useEffect(() => {
     let cancelled = false;
 
@@ -458,10 +503,11 @@ export default function App() {
     }
 
     load();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [fuelType, serviceType]);
 
-  // Load coverage stats
   useEffect(() => {
     let cancelled = false;
 
@@ -471,6 +517,7 @@ export default function App() {
         if (!res.ok) throw new Error(`Coverage stats failed: ${res.status}`);
 
         const data = await res.json();
+
         if (!cancelled) {
           setCoverageStats({
             totalFuelAirports: Number(data.totalFuelAirports || 0),
@@ -482,51 +529,23 @@ export default function App() {
         }
       } catch {
         if (!cancelled) {
-          setCoverageStats({ totalFuelAirports: 0, coveredAirports: 0, remainingAirports: 0, attemptedLast24h: 0, changedLast24h: 0 });
+          setCoverageStats({
+            totalFuelAirports: 0,
+            coveredAirports: 0,
+            remainingAirports: 0,
+            attemptedLast24h: 0,
+            changedLast24h: 0,
+          });
         }
       }
     }
 
     loadCoverageStats();
-    return () => { cancelled = true; };
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
-
-  // Load airport trend when selectedAirport changes
-  useEffect(() => {
-    let cancelled = false;
-
-    async function loadAirportTrend() {
-      if (!selectedAirport?.airport_code) {
-        setAirportTrend([]);
-        setIsLoadingTrend(false);
-        return;
-      }
-
-      setIsLoadingTrend(true);
-      try {
-        const params = new URLSearchParams({
-          airportCode: selectedAirport.airport_code,
-          fuelType,
-          serviceType,
-        });
-
-        const res = await fetch(`/.netlify/functions/airport-trend?${params.toString()}`);
-        if (!res.ok) throw new Error("Trend request failed");
-
-        const data = await res.json();
-        if (!cancelled) {
-          setAirportTrend(Array.isArray(data.points) ? data.points : []);
-        }
-      } catch {
-        if (!cancelled) setAirportTrend([]);
-      } finally {
-        if (!cancelled) setIsLoadingTrend(false);
-      }
-    }
-
-    loadAirportTrend();
-    return () => { cancelled = true; };
-  }, [selectedAirport?.airport_code, fuelType, serviceType]);
 
   const filteredAirports = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -543,6 +562,7 @@ export default function App() {
         .filter(Boolean)
         .join(" ")
         .toLowerCase();
+
       return haystack.includes(q);
     });
   }, [airports, search]);
@@ -567,7 +587,10 @@ export default function App() {
   );
 
   const nationalStats = useMemo(() => {
-    const values = statAirports.map((a) => Number(a.price)).filter((v) => Number.isFinite(v));
+    const values = statAirports
+      .map((a) => Number(a.price))
+      .filter((v) => Number.isFinite(v));
+
     if (!values.length) return { min: null, max: null, avg: null };
 
     return {
@@ -578,7 +601,10 @@ export default function App() {
   }, [statAirports]);
 
   const visibleStats = useMemo(() => {
-    const values = visibleStatAirports.map((a) => Number(a.price)).filter((v) => Number.isFinite(v));
+    const values = visibleStatAirports
+      .map((a) => Number(a.price))
+      .filter((v) => Number.isFinite(v));
+
     if (!values.length) return { min: null, max: null, avg: null };
 
     return {
@@ -600,6 +626,7 @@ export default function App() {
 
   const visibleVsNational = useMemo(() => {
     if (visibleStats.avg == null || nationalStats.avg == null) return null;
+
     const diff = visibleStats.avg - nationalStats.avg;
     return {
       diff,
@@ -612,7 +639,6 @@ export default function App() {
       ? (coverageStats.coveredAirports / coverageStats.totalFuelAirports) * 100
       : 0;
 
-  // Regional trend
   useEffect(() => {
     const groups = new Map();
     const cutoff = new Date();
@@ -624,7 +650,8 @@ export default function App() {
       if (!key || !Number.isFinite(price)) continue;
 
       const d = new Date(key);
-      if (Number.isNaN(d.getTime()) || d < cutoff) continue;
+      if (Number.isNaN(d.getTime())) continue;
+      if (d < cutoff) continue;
 
       if (!groups.has(key)) groups.set(key, []);
       groups.get(key).push(price);
@@ -639,6 +666,40 @@ export default function App() {
 
     setRegionalTrend(points);
   }, [visibleStatAirports]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadAirportTrend() {
+      if (!selectedAirport?.airport_code) {
+        setAirportTrend([]);
+        return;
+      }
+
+      try {
+        const params = new URLSearchParams({
+          airportCode: selectedAirport.airport_code,
+          fuelType,
+          serviceType,
+        });
+
+        const res = await fetch(`/.netlify/functions/airport-trend?${params.toString()}`);
+        if (!res.ok) throw new Error(`Trend request failed: ${res.status}`);
+
+        const data = await res.json();
+        if (!cancelled) {
+          setAirportTrend(Array.isArray(data.points) ? data.points : []);
+        }
+      } catch {
+        if (!cancelled) setAirportTrend([]);
+      }
+    }
+
+    loadAirportTrend();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedAirport, fuelType, serviceType]);
 
   function focusAirportOnMap(airport) {
     if (!airport || !mapInstance) return;
@@ -681,13 +742,12 @@ export default function App() {
             AirFuel Tracker
           </h1>
           <p style={{ margin: "4px 0 0", fontSize: 14, color: "#64748b" }}>
-            Live airport fuel price and trend.
+            Live airport fuel price and trend. 
           </p>
         </div>
       </div>
 
       <div style={{ display: "grid", gap: 16 }}>
-        {/* Fuel Type */}
         <div>
           <label style={labelStyle}>Fuel type</label>
           <select value={fuelType} onChange={(e) => setFuelType(e.target.value)} style={selectStyle}>
@@ -699,7 +759,6 @@ export default function App() {
           </select>
         </div>
 
-        {/* Service Type */}
         <div>
           <label style={labelStyle}>Service type</label>
           <select value={serviceType} onChange={(e) => setServiceType(e.target.value)} style={selectStyle}>
@@ -709,7 +768,6 @@ export default function App() {
           </select>
         </div>
 
-        {/* Search */}
         <div>
           <label style={labelStyle}>Search</label>
           <div style={searchBoxStyle}>
@@ -723,33 +781,56 @@ export default function App() {
           </div>
         </div>
 
-        {/* Stats Cards */}
         <div style={cardStyle}>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+          <div
+            style={{
+              marginTop: 2,
+              display: "grid",
+              gridTemplateColumns: "1fr 1fr",
+              gap: 12,
+              alignItems: "start",
+            }}
+          >
             <div>
               <div style={{ fontSize: 16, fontWeight: 600, color: "#334155" }}>Airports shown</div>
               <div style={bigValueStyle}>{visibleStatAirports.length}</div>
               <div style={tinyMutedStyle}>Visible / matched: {statAirports.length}</div>
             </div>
+
             <div>
               <div style={{ fontSize: 16, fontWeight: 600, color: "#334155" }}>Price range</div>
-              <div style={{ paddingTop: 8, fontSize: 20, fontWeight: 600 }}>
+              <div style={{ paddingTop: 8, paddingBottom: 4, fontSize: 20, fontWeight: 600 }}>
                 {visibleStats.min == null
                   ? "N/A"
                   : `$${visibleStats.min.toFixed(2)} - $${visibleStats.max.toFixed(2)}`}
+              </div>
+              <div style={tinyMutedStyle}>
+                National:{" "}
+                {nationalStats.min == null
+                  ? "N/A"
+                  : `$${nationalStats.min.toFixed(2)} - $${nationalStats.max.toFixed(2)}`}
               </div>
             </div>
           </div>
         </div>
 
         <div style={cardStyle}>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+          <div
+            style={{
+              marginTop: 2,
+              display: "grid",
+              gridTemplateColumns: "1fr 1fr",
+              gap: 12,
+              alignItems: "start",
+            }}
+          >
             <div>
               <div style={{ fontSize: 16, fontWeight: 600, color: "#334155" }}>Visible area</div>
               <div style={bigValueStyle}>
                 {visibleStats.avg == null ? "N/A" : `$${visibleStats.avg.toFixed(2)}`}
               </div>
             </div>
+
             <div>
               <div style={{ fontSize: 16, fontWeight: 600, color: "#334155" }}>National average</div>
               <div style={bigValueStyle}>
@@ -757,6 +838,7 @@ export default function App() {
               </div>
             </div>
           </div>
+
           <div style={tinyMutedStyle}>
             {visibleVsNational == null
               ? "Comparison unavailable"
@@ -764,56 +846,137 @@ export default function App() {
           </div>
         </div>
 
-        {/* Lowest & Highest */}
         <div style={cardStyle}>
           <div style={{ fontSize: 14, fontWeight: 600, color: "#334155" }}>Lowest in view</div>
           {visibleExtremes.cheapest ? (
-            <div
-              style={{ cursor: "pointer" }}
-              onMouseEnter={() => setHoveredExtremeAirportCode(visibleExtremes.cheapest.airport_code)}
-              onMouseLeave={() => setHoveredExtremeAirportCode(null)}
-              onClick={() => focusAirportOnMap(visibleExtremes.cheapest)}
-            >
-              <div style={{ fontSize: 16, fontWeight: 700 }}>{visibleExtremes.cheapest.airport_code}</div>
-              <div>{visibleExtremes.cheapest.airport_name}</div>
-              <div style={{ color: "#64748b" }}>{toDisplayPrice(visibleExtremes.cheapest.price)}</div>
-            </div>
+            <>
+              <div
+                style={{ paddingTop: 4, fontSize: 16, fontWeight: 700, cursor: "pointer" }}
+                onMouseEnter={() => {
+                  setHighlightedAirportCode(visibleExtremes.cheapest.airport_code);
+                  setHoveredExtremeAirportCode(visibleExtremes.cheapest.airport_code);
+                }}
+                onMouseLeave={() => {
+                  setHighlightedAirportCode(null);
+                  setHoveredExtremeAirportCode(null);
+                }}
+                onClick={() => focusAirportOnMap(visibleExtremes.cheapest)}
+              >
+                {visibleExtremes.cheapest.airport_code}
+              </div>
+              <div
+                style={{ cursor: "pointer" }}
+                onMouseEnter={() => {
+                  setHighlightedAirportCode(visibleExtremes.cheapest.airport_code);
+                  setHoveredExtremeAirportCode(visibleExtremes.cheapest.airport_code);
+                }}
+                onMouseLeave={() => {
+                  setHighlightedAirportCode(null);
+                  setHoveredExtremeAirportCode(null);
+                }}
+                onClick={() => focusAirportOnMap(visibleExtremes.cheapest)}
+              >
+                {visibleExtremes.cheapest.airport_name}
+              </div>
+              <div
+                style={{ color: "#64748b", cursor: "pointer" }}
+                onMouseEnter={() => {
+                  setHighlightedAirportCode(visibleExtremes.cheapest.airport_code);
+                  setHoveredExtremeAirportCode(visibleExtremes.cheapest.airport_code);
+                }}
+                onMouseLeave={() => {
+                  setHighlightedAirportCode(null);
+                  setHoveredExtremeAirportCode(null);
+                }}
+                onClick={() => focusAirportOnMap(visibleExtremes.cheapest)}
+              >
+                {toDisplayPrice(visibleExtremes.cheapest.price)}
+              </div>
+            </>
           ) : (
-            <div style={{ color: "#64748b" }}>N/A</div>
+            <div style={{ paddingTop: 4, color: "#64748b" }}>N/A</div>
           )}
         </div>
 
         <div style={cardStyle}>
           <div style={{ fontSize: 14, fontWeight: 600, color: "#334155" }}>Highest in view</div>
           {visibleExtremes.priciest ? (
-            <div
-              style={{ cursor: "pointer" }}
-              onMouseEnter={() => setHoveredExtremeAirportCode(visibleExtremes.priciest.airport_code)}
-              onMouseLeave={() => setHoveredExtremeAirportCode(null)}
-              onClick={() => focusAirportOnMap(visibleExtremes.priciest)}
-            >
-              <div style={{ fontSize: 16, fontWeight: 700 }}>{visibleExtremes.priciest.airport_code}</div>
-              <div>{visibleExtremes.priciest.airport_name}</div>
-              <div style={{ color: "#64748b" }}>{toDisplayPrice(visibleExtremes.priciest.price)}</div>
-            </div>
+            <>
+              <div
+                style={{ paddingTop: 4, fontSize: 16, fontWeight: 700, cursor: "pointer" }}
+                onMouseEnter={() => {
+                  setHighlightedAirportCode(visibleExtremes.priciest.airport_code);
+                  setHoveredExtremeAirportCode(visibleExtremes.priciest.airport_code);
+                }}
+                onMouseLeave={() => {
+                  setHighlightedAirportCode(null);
+                  setHoveredExtremeAirportCode(null);
+                }}
+                onClick={() => focusAirportOnMap(visibleExtremes.priciest)}
+              >
+                {visibleExtremes.priciest.airport_code}
+              </div>
+              <div
+                style={{ cursor: "pointer" }}
+                onMouseEnter={() => {
+                  setHighlightedAirportCode(visibleExtremes.priciest.airport_code);
+                  setHoveredExtremeAirportCode(visibleExtremes.priciest.airport_code);
+                }}
+                onMouseLeave={() => {
+                  setHighlightedAirportCode(null);
+                  setHoveredExtremeAirportCode(null);
+                }}
+                onClick={() => focusAirportOnMap(visibleExtremes.priciest)}
+              >
+                {visibleExtremes.priciest.airport_name}
+              </div>
+              <div
+                style={{ color: "#64748b", cursor: "pointer" }}
+                onMouseEnter={() => {
+                  setHighlightedAirportCode(visibleExtremes.priciest.airport_code);
+                  setHoveredExtremeAirportCode(visibleExtremes.priciest.airport_code);
+                }}
+                onMouseLeave={() => {
+                  setHighlightedAirportCode(null);
+                  setHoveredExtremeAirportCode(null);
+                }}
+                onClick={() => focusAirportOnMap(visibleExtremes.priciest)}
+              >
+                {toDisplayPrice(visibleExtremes.priciest.price)}
+              </div>
+            </>
           ) : (
-            <div style={{ color: "#64748b" }}>N/A</div>
+            <div style={{ paddingTop: 4, color: "#64748b" }}>N/A</div>
           )}
         </div>
 
-        {/* Coverage */}
         <div style={cardStyle}>
-          <div style={{ fontSize: 14, fontWeight: 600, color: "#334155", marginBottom: 8 }}>Collection coverage</div>
+          <div style={{ fontSize: 14, fontWeight: 600, color: "#334155", marginBottom: 8 }}>
+            Collection coverage
+          </div>
+
           <div style={{ fontSize: 28, fontWeight: 700, color: "#0f172a" }}>
             {coverageStats.coveredAirports.toLocaleString()}
             <span style={{ fontSize: 16, fontWeight: 500, color: "#64748b" }}>
-              {" "} / {coverageStats.totalFuelAirports.toLocaleString()}
+              {" "}
+              / {coverageStats.totalFuelAirports.toLocaleString()}
             </span>
           </div>
+
           <div style={{ fontSize: 12, color: "#64748b", marginTop: 4 }}>
             Remaining: {coverageStats.remainingAirports.toLocaleString()}
           </div>
-          <div style={{ marginTop: 10, height: 10, background: "#e2e8f0", borderRadius: 999, overflow: "hidden" }}>
+
+          <div
+            style={{
+              marginTop: 10,
+              height: 10,
+              width: "100%",
+              borderRadius: 999,
+              background: "#e2e8f0",
+              overflow: "hidden",
+            }}
+          >
             <div
               style={{
                 height: "100%",
@@ -822,20 +985,96 @@ export default function App() {
               }}
             />
           </div>
+
           <div style={{ fontSize: 12, color: "#64748b", marginTop: 6 }}>
             {coveragePercent.toFixed(1)}% collected
           </div>
+
+          <div
+            style={{
+              marginTop: 12,
+              display: "grid",
+              gridTemplateColumns: "1fr 1fr",
+              gap: 8,
+            }}
+          >
+            <div
+              style={{
+                borderRadius: 12,
+                background: "#f8fafc",
+                padding: 10,
+                border: "1px solid #e2e8f0",
+              }}
+            >
+              <div style={{ fontSize: 12, color: "#64748b" }}>Last 24h scanned</div>
+              <div style={{ fontSize: 20, fontWeight: 700, color: "#0f172a", marginTop: 2 }}>
+                {coverageStats.attemptedLast24h.toLocaleString()}
+              </div>
+            </div>
+
+            <div
+              style={{
+                borderRadius: 12,
+                background: "#f8fafc",
+                padding: 10,
+                border: "1px solid #e2e8f0",
+              }}
+            >
+              <div style={{ fontSize: 12, color: "#64748b" }}>Last 24h changed</div>
+              <div style={{ fontSize: 20, fontWeight: 700, color: "#0f172a", marginTop: 2 }}>
+                {coverageStats.changedLast24h.toLocaleString()}
+              </div>
+            </div>
+          </div>
         </div>
 
-        {/* Trends */}
         <div style={cardStyle}>
           <div style={{ marginBottom: 8, fontSize: 14, fontWeight: 600, color: "#334155" }}>
-            National vs visible region trend
+            Visible-region palette
           </div>
-          <DualTrend nationalPoints={nationalTrend} regionalPoints={regionalTrend} />
+          <div
+            style={{
+              height: 12,
+              width: "100%",
+              overflow: "hidden",
+              borderRadius: 999,
+              border: "1px solid #e2e8f0",
+              display: "grid",
+              gridTemplateColumns: "repeat(7, 1fr)",
+            }}
+          >
+            <div style={{ background: "#166534" }} />
+            <div style={{ background: "#16a34a" }} />
+            <div style={{ background: "#65a30d" }} />
+            <div style={{ background: "#eab308" }} />
+            <div style={{ background: "#f59e0b" }} />
+            <div style={{ background: "#ef4444" }} />
+            <div style={{ background: "#b91c1c" }} />
+          </div>
+          <div style={{ marginTop: 8, display: "flex", justifyContent: "space-between", fontSize: 12, color: "#64748b" }}>
+            <span>Lower</span>
+            <span>Higher</span>
+          </div>
         </div>
 
-        <div style={{ borderRadius: 16, background: "#f8fafc", padding: 12, fontSize: 14, color: "#475569" }}>
+        <PanelSection title="National vs visible region trend" icon={<TrendingUp size={14} />}>
+          <DualTrend
+            nationalPoints={nationalTrend}
+            regionalPoints={regionalTrend}
+            width={260}
+            height={150}
+          />
+        </PanelSection>
+
+        <div
+          style={{
+            borderRadius: 16,
+            background: "#f8fafc",
+            padding: 12,
+            fontSize: 14,
+            color: "#475569",
+          }}
+        >
           <div style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 600, color: "#1e293b" }}>
             <RefreshCw size={14} />
             Data status
@@ -856,18 +1095,17 @@ export default function App() {
         const validPrice = Number.isFinite(price) ? price : null;
         const isCanada = isCanadaAirport(airport);
         const color = isCanada ? "#000000" : priceToColor(validPrice, visibleStats.min, visibleStats.max);
-        const isHighlighted = highlightedAirportCode === airport.airport_code;
 
         return (
           <CircleMarker
-            key={`${airport.airport_code}-${airport.fbo_name}`}
+            key={`${airport.airport_code}-${airport.fbo_name}-${airport.fuel_type}-${airport.service_type}`}
             center={[airport.lat, airport.lon]}
             radius={8}
             pathOptions={{
-              color: isHighlighted ? "#111827" : color,
+              color: highlightedAirportCode === airport.airport_code ? "#111827" : color,
               fillColor: color,
               fillOpacity: 0.85,
-              weight: isHighlighted ? 3 : 1,
+              weight: highlightedAirportCode === airport.airport_code ? 3 : 1,
             }}
             eventHandlers={{ click: () => setSelectedAirport(airport) }}
           >
@@ -896,14 +1134,14 @@ export default function App() {
                 <div>
                   <span style={{ fontWeight: 600 }}>Reported:</span> {airport.reported_date || "N/A"}
                 </div>
-
-                <div style={{ paddingTop: 12, borderTop: "1px solid #e2e8f0" }}>
-                  <div style={{ marginBottom: 6, fontSize: 13, fontWeight: 600, color: "#475569" }}>
+                <div>
+                  <span style={{ fontWeight: 600 }}>Guaranteed:</span> {airport.guaranteed ? "Yes" : "No"}
+                </div>
+                <div style={{ paddingTop: 8 }}>
+                  <div style={{ marginBottom: 4, fontSize: 12, fontWeight: 600, color: "#475569" }}>
                     Recent airport trend
                   </div>
-                  {isLoadingTrend && selectedAirport?.airport_code === airport.airport_code ? (
-                    <div style={{ fontSize: 12, color: "#64748b" }}>Loading trend...</div>
-                  ) : selectedAirport?.airport_code === airport.airport_code ? (
+                  {selectedAirport?.airport_code === airport.airport_code ? (
                     <MiniTrend points={airportTrend} width={260} height={110} showPointLabels />
                   ) : (
                     <div style={{ fontSize: 12, color: "#64748b" }}>Tap marker to load trend</div>
@@ -915,13 +1153,12 @@ export default function App() {
         );
       })}
 
-      {/* Top Star for extremes */}
       {hoveredExtremeAirportCode &&
         filteredAirports
-          .filter((a) => a.airport_code === hoveredExtremeAirportCode)
+          .filter((airport) => airport.airport_code === hoveredExtremeAirportCode)
           .map((airport) => (
             <Marker
-              key={`top-star-${airport.airport_code}`}
+              key={`top-star-${airport.airport_code}-${airport.fbo_name}`}
               position={[airport.lat, airport.lon]}
               icon={topStarIcon}
               zIndexOffset={100000}
@@ -957,7 +1194,6 @@ export default function App() {
             </MapContainer>
           </main>
 
-          {/* Mobile Header */}
           <div
             style={{
               position: "absolute",
@@ -998,11 +1234,19 @@ export default function App() {
             </button>
           </div>
 
-          {/* Mobile Panel */}
+          {mobilePanelOpen && (
+            <div
+              onClick={() => setMobilePanelOpen(false)}
+              style={{
+                position: "absolute",
+                inset: 0,
+                background: "rgba(0,0,0,0.25)",
+                zIndex: 1001,
+              }}
+            />
+          )}
+
           <aside
-            onTouchStart={handlePanelTouchStart}
-            onTouchMove={handlePanelTouchMove}
-            onTouchEnd={handlePanelTouchEnd}
             style={{
               position: "absolute",
               left: 0,
@@ -1014,13 +1258,11 @@ export default function App() {
               borderTopLeftRadius: 24,
               borderTopRightRadius: 24,
               borderTop: "1px solid #e2e8f0",
-              background: "rgba(255,255,255,0.96)",
+              background: "#fff",
               padding: 16,
               boxShadow: "0 -12px 32px rgba(0,0,0,0.18)",
-              backdropFilter: "blur(8px)",
               transform: mobilePanelOpen ? "translateY(0)" : "translateY(calc(100% - 64px))",
               transition: "transform 0.28s ease",
-              touchAction: "pan-y",
             }}
           >
             <div
@@ -1030,14 +1272,20 @@ export default function App() {
                 borderRadius: 999,
                 background: "#cbd5e1",
                 margin: "0 auto 12px",
-                cursor: "grab",
               }}
             />
             <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 12 }}>
               <div style={{ fontSize: 14, fontWeight: 700, color: "#334155" }}>Filters & stats</div>
               <button
                 onClick={() => setMobilePanelOpen((v) => !v)}
-                style={{ border: "none", background: "transparent", color: "#64748b", fontSize: 12, fontWeight: 600, cursor: "pointer" }}
+                style={{
+                  border: "none",
+                  background: "transparent",
+                  color: "#64748b",
+                  fontSize: 12,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
               >
                 {mobilePanelOpen ? "Collapse" : "Expand"}
               </button>
@@ -1081,7 +1329,6 @@ export default function App() {
   );
 }
 
-// Styles
 const cardStyle = {
   borderRadius: 16,
   border: "1px solid #e2e8f0",
@@ -1134,5 +1381,10 @@ const bigValueStyle = {
 const tinyMutedStyle = {
   paddingTop: 4,
   fontSize: 12,
+  color: "#64748b",
+};
+
+const smallTitleStyle = {
+  fontSize: 14,
   color: "#64748b",
 };
