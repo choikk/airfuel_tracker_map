@@ -57,8 +57,8 @@ export default async (req) => {
         AND a.lon IS NOT NULL
       ORDER BY
         p.airport_code,
-        p.price ASC,
         p.reported_date DESC NULLS LAST,
+        p.price ASC,
         p.valid_from DESC
     `;
 

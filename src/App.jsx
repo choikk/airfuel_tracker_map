@@ -5,7 +5,7 @@ import {
   TileLayer,
   CircleMarker,
   Popup,
-  Tooltip,
+ Tooltip,
   Marker,
   useMap,
   useMapEvents,
@@ -793,10 +793,14 @@ export default function App() {
           {visibleExtremes.cheapest ? (
             <div
               style={{ cursor: "pointer" }}
-              onMouseEnter={() =>
-                setHoveredExtremeAirportCode(visibleExtremes.cheapest.airport_code)
-              }
-              onMouseLeave={() => setHoveredExtremeAirportCode(null)}
+              onMouseEnter={() => {
+                setHighlightedAirportCode(visibleExtremes.cheapest.airport_code);
+                setHoveredExtremeAirportCode(visibleExtremes.cheapest.airport_code);
+              }}
+              onMouseLeave={() => {
+                setHighlightedAirportCode(null);
+                setHoveredExtremeAirportCode(null);
+              }}
               onClick={() => focusAirportOnMap(visibleExtremes.cheapest)}
             >
               <div style={{ fontSize: 16, fontWeight: 700 }}>
@@ -815,10 +819,14 @@ export default function App() {
           {visibleExtremes.priciest ? (
             <div
               style={{ cursor: "pointer" }}
-              onMouseEnter={() =>
-                setHoveredExtremeAirportCode(visibleExtremes.priciest.airport_code)
-              }
-              onMouseLeave={() => setHoveredExtremeAirportCode(null)}
+              onMouseEnter={() => {
+                setHighlightedAirportCode(visibleExtremes.priciest.airport_code);
+                setHoveredExtremeAirportCode(visibleExtremes.priciest.airport_code);
+              }}
+              onMouseLeave={() => {
+                setHighlightedAirportCode(null);
+                setHoveredExtremeAirportCode(null);
+              }}
               onClick={() => focusAirportOnMap(visibleExtremes.priciest)}
             >
               <div style={{ fontSize: 16, fontWeight: 700 }}>
@@ -912,6 +920,29 @@ export default function App() {
         const isCanada = isCanadaAirport(airport);
         const color = isCanada ? "#000000" : priceToColor(validPrice, visibleStats.min, visibleStats.max);
         const isHighlighted = highlightedAirportCode === airport.airport_code;
+        const isSelectedAirport = selectedAirport?.airport_code === airport.airport_code;
+
+        const latestTrendPoint =
+          isSelectedAirport && airportTrend.length
+            ? [...airportTrend]
+                .map((p) => {
+                  const rawDate = p.reported_date || p.date || p.valid_from || "";
+                  const parsedTime = Date.parse(rawDate);
+                  return {
+                    ...p,
+                    rawDate,
+                    parsedTime: Number.isNaN(parsedTime) ? -1 : parsedTime,
+                  };
+                })
+                .sort((a, b) => b.parsedTime - a.parsedTime)[0]
+            : null;
+
+        const popupPrice = latestTrendPoint
+          ? Number(latestTrendPoint.avg_price ?? latestTrendPoint.price)
+          : airport.price;
+
+        const popupReported = latestTrendPoint ? latestTrendPoint.rawDate : airport.reported_date;
+        const popupGuaranteed = latestTrendPoint?.guaranteed ?? airport.guaranteed;
 
         return (
           <CircleMarker
@@ -946,10 +977,13 @@ export default function App() {
                   <span style={{ fontWeight: 600 }}>Fuel:</span> {airport.fuel_type}_{airport.service_type}
                 </div>
                 <div>
-                  <span style={{ fontWeight: 600 }}>Price:</span> {toDisplayPrice(airport.price)}
+                  <span style={{ fontWeight: 600 }}>Price:</span> {toDisplayPrice(popupPrice)}
                 </div>
                 <div>
-                  <span style={{ fontWeight: 600 }}>Reported:</span> {airport.reported_date || "N/A"}
+                  <span style={{ fontWeight: 600 }}>Reported:</span> {popupReported || "N/A"}
+                </div>
+                <div>
+                  <span style={{ fontWeight: 600 }}>Guaranteed:</span> {popupGuaranteed ? "Yes" : "No"}
                 </div>
 
                 <div style={{ paddingTop: 12, borderTop: "1px solid #e2e8f0" }}>
@@ -963,9 +997,9 @@ export default function App() {
                   >
                     Recent airport trend
                   </div>
-                  {isLoadingTrend && selectedAirport?.airport_code === airport.airport_code ? (
+                  {isLoadingTrend && isSelectedAirport ? (
                     <div style={{ fontSize: 12, color: "#64748b" }}>Loading trend...</div>
-                  ) : selectedAirport?.airport_code === airport.airport_code ? (
+                  ) : isSelectedAirport ? (
                     <MiniTrend points={airportTrend} width={260} height={110} showPointLabels />
                   ) : (
                     <div style={{ fontSize: 12, color: "#64748b" }}>Tap marker to load trend</div>
@@ -1009,7 +1043,7 @@ export default function App() {
             <MapContainer center={[39.5, -98.35]} zoom={4} style={{ width: "100%", height: "100%" }}>
               <TileLayer
                 attribution="&copy; OpenStreetMap contributors"
-                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                url="https://{s}.tile.openstreetmap.org/{z}/{y}/{x}.png" /* keep plain string output */
               />
               <MapInstanceCapture onReady={setMapInstance} />
               <FitBounds airports={filteredAirports} />
