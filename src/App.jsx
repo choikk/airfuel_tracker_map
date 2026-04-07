@@ -11,7 +11,7 @@ import {
   useMapEvents,
 } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
-import { Search, RefreshCw, Fuel, MapPinned, Filter, TrendingUp } from "lucide-react";
+import { Search, RefreshCw, Fuel, TrendingUp } from "lucide-react";
 
 const FUEL_OPTIONS = [
   { value: "100LL", label: "100LL" },
@@ -198,12 +198,7 @@ function MiniTrend({ points, width = 260, height = 110, showPointLabels = false 
         viewBox={`0 0 ${width} ${height}`}
         style={{ display: "block", maxWidth: "100%", overflow: "visible" }}
       >
-        <polyline
-          fill="none"
-          stroke="#0284c7"
-          strokeWidth="2"
-          points={polylinePoints}
-        />
+        <polyline fill="none" stroke="#0284c7" strokeWidth="2" points={polylinePoints} />
 
         {coords.map((p, idx) => {
           const isNearRight = p.x > width - 70;
@@ -241,6 +236,128 @@ function MiniTrend({ points, width = 260, height = 110, showPointLabels = false 
           );
         })}
       </svg>
+    </div>
+  );
+}
+
+function DualTrend({ nationalPoints, regionalPoints, width = 260, height = 150 }) {
+  const normalize = (points) =>
+    (points || [])
+      .map((p) => {
+        const value = Number(p.avg_price ?? p.price);
+        const rawDate = p.date || p.reported_date || p.valid_from || "";
+        const t = Date.parse(rawDate);
+        if (!Number.isFinite(value) || Number.isNaN(t)) return null;
+        return {
+          value,
+          date: rawDate,
+          time: t,
+        };
+      })
+      .filter(Boolean)
+      .sort((a, b) => a.time - b.time);
+
+  const national = normalize(nationalPoints);
+  const regional = normalize(regionalPoints);
+
+  if (national.length < 2 && regional.length < 2) {
+    return <div style={{ fontSize: 12, color: "#64748b" }}>Not enough history</div>;
+  }
+
+  const all = [...national, ...regional];
+  const minTime = Math.min(...all.map((p) => p.time));
+  const maxTime = Math.max(...all.map((p) => p.time));
+  const minValue = Math.min(...all.map((p) => p.value));
+  const maxValue = Math.max(...all.map((p) => p.value));
+
+  const paddingLeft = 10;
+  const paddingRight = 10;
+  const paddingTop = 10;
+  const paddingBottom = 20;
+
+  const usableW = width - paddingLeft - paddingRight;
+  const usableH = height - paddingTop - paddingBottom;
+
+  const toCoords = (points) =>
+    points.map((p) => {
+      const x =
+        paddingLeft +
+        (maxTime === minTime ? usableW / 2 : ((p.time - minTime) / (maxTime - minTime)) * usableW);
+      const y =
+        paddingTop +
+        (maxValue === minValue
+          ? usableH / 2
+          : (1 - (p.value - minValue) / (maxValue - minValue)) * usableH);
+      return { ...p, x, y };
+    });
+
+  const nationalCoords = toCoords(national);
+  const regionalCoords = toCoords(regional);
+
+  const nationalPolyline = nationalCoords.map((p) => `${p.x},${p.y}`).join(" ");
+  const regionalPolyline = regionalCoords.map((p) => `${p.x},${p.y}`).join(" ");
+
+  return (
+    <div style={{ width, maxWidth: "100%" }}>
+      <svg
+        width={width}
+        height={height}
+        viewBox={`0 0 ${width} ${height}`}
+        style={{ display: "block", maxWidth: "100%" }}
+      >
+        {nationalCoords.length >= 2 && (
+          <polyline fill="none" stroke="#0284c7" strokeWidth="2" points={nationalPolyline} />
+        )}
+
+        {regionalCoords.length >= 2 && (
+          <polyline fill="none" stroke="#dc2626" strokeWidth="2" points={regionalPolyline} />
+        )}
+
+        {nationalCoords.map((p, idx) => (
+          <circle key={`n-${idx}`} cx={p.x} cy={p.y} r="2.5" fill="#0284c7" />
+        ))}
+
+        {regionalCoords.map((p, idx) => (
+          <circle key={`r-${idx}`} cx={p.x} cy={p.y} r="2.5" fill="#dc2626" />
+        ))}
+      </svg>
+
+      <div
+        style={{
+          marginTop: 8,
+          display: "flex",
+          gap: 14,
+          flexWrap: "wrap",
+          fontSize: 12,
+          color: "#475569",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <span
+            style={{
+              width: 10,
+              height: 10,
+              borderRadius: 999,
+              background: "#0284c7",
+              display: "inline-block",
+            }}
+          />
+          <span>National average</span>
+        </div>
+
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <span
+            style={{
+              width: 10,
+              height: 10,
+              borderRadius: 999,
+              background: "#dc2626",
+              display: "inline-block",
+            }}
+          />
+          <span>Visible region</span>
+        </div>
+      </div>
     </div>
   );
 }
@@ -482,34 +599,33 @@ export default function App() {
       ? (coverageStats.coveredAirports / coverageStats.totalFuelAirports) * 100
       : 0;
 
-useEffect(() => {
-  const groups = new Map();
-  const cutoff = new Date();
-  cutoff.setDate(cutoff.getDate() - 90);
+  useEffect(() => {
+    const groups = new Map();
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - 90);
 
-  for (const airport of visibleStatAirports) {
-    const key = airport.reported_date;
-    const price = Number(airport.price);
-    if (!key || !Number.isFinite(price)) continue;
+    for (const airport of visibleStatAirports) {
+      const key = airport.reported_date;
+      const price = Number(airport.price);
+      if (!key || !Number.isFinite(price)) continue;
 
-    const d = new Date(key);
-    if (Number.isNaN(d.getTime())) continue;
-    if (d < cutoff) continue;
+      const d = new Date(key);
+      if (Number.isNaN(d.getTime())) continue;
+      if (d < cutoff) continue;
 
-    if (!groups.has(key)) groups.set(key, []);
-    groups.get(key).push(price);
-  }
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(price);
+    }
 
-  const points = [...groups.entries()]
-    .map(([date, values]) => ({
-      date,
-      avg_price: values.reduce((sum, v) => sum + v, 0) / values.length,
-    }))
-    .sort((a, b) => String(a.date).localeCompare(String(b.date)));
+    const points = [...groups.entries()]
+      .map(([date, values]) => ({
+        date,
+        avg_price: values.reduce((sum, v) => sum + v, 0) / values.length,
+      }))
+      .sort((a, b) => String(a.date).localeCompare(String(b.date)));
 
-  setRegionalTrend(points);
-}, [visibleStatAirports]);
-
+    setRegionalTrend(points);
+  }, [visibleStatAirports]);
 
   useEffect(() => {
     let cancelled = false;
@@ -619,41 +735,70 @@ useEffect(() => {
           </div>
         </div>
 
-        <PanelSection title="Airports shown" icon={<MapPinned size={14} />}>
-          <div style={bigValueStyle}>{visibleStatAirports.length}</div>
-          <div style={tinyMutedStyle}>Visible / matched: {statAirports.length}</div>
-        </PanelSection>
-
-        <PanelSection title="Visible average" icon={<Filter size={14} />}>
-          <div style={bigValueStyle}>
-            {visibleStats.avg == null ? "N/A" : `$${visibleStats.avg.toFixed(2)}`}
-          </div>
-        </PanelSection>
-
         <div style={cardStyle}>
-          <div style={smallTitleStyle}>National average</div>
-          <div style={bigValueStyle}>
-            {nationalStats.avg == null ? "N/A" : `$${nationalStats.avg.toFixed(2)}`}
-          </div>
-          <div style={tinyMutedStyle}>
-            {visibleVsNational == null
-              ? "Comparison unavailable"
-              : `Visible region is ${Math.abs(visibleVsNational.diff).toFixed(2)} ${visibleVsNational.direction} national average`}
+
+          <div
+            style={{
+              marginTop: 2,
+              display: "grid",
+              gridTemplateColumns: "1fr 1fr",
+              gap: 12,
+              alignItems: "start",
+            }}
+          >
+            <div>
+              <div style={{ fontSize: 16, fontWeight: 600, color: "#334155" }}>Airports shown</div>
+              <div style={bigValueStyle}>{visibleStatAirports.length}</div>
+              <div style={tinyMutedStyle}>Visible / matched: {statAirports.length}</div>
+            </div>
+
+            <div>
+              <div style={{ fontSize: 16, fontWeight: 600, color: "#334155" }}>Price range</div>
+              <div style={{ paddingTop: 8, paddingBottom: 4, fontSize: 20, fontWeight: 600 }}>
+                {visibleStats.min == null
+                  ? "N/A"
+                  : `$${visibleStats.min.toFixed(2)} - $${visibleStats.max.toFixed(2)}`}
+              </div>
+              <div style={tinyMutedStyle}>
+                National:{" "}
+                {nationalStats.min == null
+                  ? "N/A"
+                  : `$${nationalStats.min.toFixed(2)} - $${nationalStats.max.toFixed(2)}`}
+              </div>
+            </div>
           </div>
         </div>
 
         <div style={cardStyle}>
-          <div style={smallTitleStyle}>Visible range</div>
-          <div style={{ paddingTop: 4, fontSize: 16, fontWeight: 500 }}>
-            {visibleStats.min == null
-              ? "N/A"
-              : `$${visibleStats.min.toFixed(2)} - $${visibleStats.max.toFixed(2)}`}
+
+          <div
+            style={{
+              marginTop: 2,
+              display: "grid",
+              gridTemplateColumns: "1fr 1fr",
+              gap: 12,
+              alignItems: "start",
+            }}
+          >
+            <div>
+              <div style={{ fontSize: 16, fontWeight: 600, color: "#334155" }}>Visible area</div>
+              <div style={bigValueStyle}>
+                {visibleStats.avg == null ? "N/A" : `$${visibleStats.avg.toFixed(2)}`}
+              </div>
+            </div>
+
+            <div>
+              <div style={{ fontSize: 16, fontWeight: 600, color: "#334155" }}>National average</div>
+              <div style={bigValueStyle}>
+                {nationalStats.avg == null ? "N/A" : `$${nationalStats.avg.toFixed(2)}`}
+              </div>
+            </div>
           </div>
+
           <div style={tinyMutedStyle}>
-            National:{" "}
-            {nationalStats.min == null
-              ? "N/A"
-              : `$${nationalStats.min.toFixed(2)} - $${nationalStats.max.toFixed(2)}`}
+            {visibleVsNational == null
+              ? "Comparison unavailable"
+              : `Visible area is ${Math.abs(visibleVsNational.diff).toFixed(2)} ${visibleVsNational.direction} national average`}
           </div>
         </div>
 
@@ -887,12 +1032,13 @@ useEffect(() => {
           </div>
         </div>
 
-        <PanelSection title="National average trend" icon={<TrendingUp size={14} />}>
-          <MiniTrend points={nationalTrend} />
-        </PanelSection>
-
-        <PanelSection title="Visible region trend" icon={<TrendingUp size={14} />}>
-          <MiniTrend points={regionalTrend} />
+        <PanelSection title="National vs visible region trend" icon={<TrendingUp size={14} />}>
+          <DualTrend
+            nationalPoints={nationalTrend}
+            regionalPoints={regionalTrend}
+            width={260}
+            height={150}
+          />
         </PanelSection>
       </div>
     </>
