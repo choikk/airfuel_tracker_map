@@ -6,51 +6,57 @@ export default async () => {
 
     const rows = await sql`
       WITH fuel_airports AS (
-        SELECT DISTINCT airport_code
-        FROM airports
-        WHERE UPPER(COALESCE(state, '')) NOT LIKE '%CANADA%'
-          AND fuel_raw IS NOT NULL
-          AND BTRIM(fuel_raw) <> ''
+        SELECT DISTINCT a.airport_code
+        FROM airports_v2 a
+        WHERE UPPER(COALESCE(a.state, '')) NOT LIKE '%CANADA%'
+          AND a.fuel_raw IS NOT NULL
+          AND BTRIM(a.fuel_raw) <> ''
+          AND UPPER(BTRIM(a.fuel_raw)) <> 'NONE'
           AND (
-            fuel_raw ILIKE '%100LL%'
-            OR fuel_raw ILIKE '%JET A%'
-            OR fuel_raw ILIKE '%JET-A%'
-            OR fuel_raw ILIKE '%SAF%'
-            OR fuel_raw ILIKE '%MOGAS%'
-            OR fuel_raw ILIKE '%UL94%'
-            OR fuel_raw ILIKE '%UL91%'
+            a.fuel_raw ILIKE '%100LL%'
+            OR a.fuel_raw ILIKE '%JET A%'
+            OR a.fuel_raw ILIKE '%JET-A%'
+            OR a.fuel_raw ILIKE '%JET_A%'
+            OR a.fuel_raw ILIKE '%SAF%'
+            OR a.fuel_raw ILIKE '%MOGAS%'
+            OR a.fuel_raw ILIKE '%UL94%'
+            OR a.fuel_raw ILIKE '%UL91%'
           )
       ),
       covered_airports AS (
-        SELECT DISTINCT p.airport_code
+        SELECT DISTINCT a.airport_code
         FROM price_periods p
-        JOIN airports a
-          ON a.airport_code = p.airport_code
+        JOIN airports_v2 a
+          ON a.site_no = p.site_no
         WHERE UPPER(COALESCE(a.state, '')) NOT LIKE '%CANADA%'
       ),
       attempted_last_24h AS (
-        SELECT COUNT(DISTINCT airport_code) AS cnt
-        FROM airports
-        WHERE UPPER(COALESCE(state, '')) NOT LIKE '%CANADA%'
-          AND fuel_raw IS NOT NULL
-          AND BTRIM(fuel_raw) <> ''
+        SELECT COUNT(DISTINCT s.airport_code) AS cnt
+        FROM airport_scrape_status_v2 s
+        JOIN airports_v2 a
+          ON a.airport_code = s.airport_code
+        WHERE UPPER(COALESCE(a.state, '')) NOT LIKE '%CANADA%'
+          AND a.fuel_raw IS NOT NULL
+          AND BTRIM(a.fuel_raw) <> ''
+          AND UPPER(BTRIM(a.fuel_raw)) <> 'NONE'
           AND (
-            fuel_raw ILIKE '%100LL%'
-            OR fuel_raw ILIKE '%JET A%'
-            OR fuel_raw ILIKE '%JET-A%'
-            OR fuel_raw ILIKE '%SAF%'
-            OR fuel_raw ILIKE '%MOGAS%'
-            OR fuel_raw ILIKE '%UL94%'
-            OR fuel_raw ILIKE '%UL91%'
+            a.fuel_raw ILIKE '%100LL%'
+            OR a.fuel_raw ILIKE '%JET A%'
+            OR a.fuel_raw ILIKE '%JET-A%'
+            OR a.fuel_raw ILIKE '%JET_A%'
+            OR a.fuel_raw ILIKE '%SAF%'
+            OR a.fuel_raw ILIKE '%MOGAS%'
+            OR a.fuel_raw ILIKE '%UL94%'
+            OR a.fuel_raw ILIKE '%UL91%'
           )
-          AND last_checked_at IS NOT NULL
-          AND last_checked_at >= NOW() - INTERVAL '24 hours'
+          AND s.last_checked_at IS NOT NULL
+          AND s.last_checked_at >= NOW() - INTERVAL '24 hours'
       ),
       changed_last_24h AS (
-        SELECT COUNT(DISTINCT p.airport_code) AS cnt
+        SELECT COUNT(DISTINCT a.airport_code) AS cnt
         FROM price_periods p
-        JOIN airports a
-          ON a.airport_code = p.airport_code
+        JOIN airports_v2 a
+          ON a.site_no = p.site_no
         WHERE UPPER(COALESCE(a.state, '')) NOT LIKE '%CANADA%'
           AND p.valid_from IS NOT NULL
           AND p.valid_from >= NOW() - INTERVAL '24 hours'
@@ -94,9 +100,7 @@ export default async () => {
     );
   } catch (err) {
     return new Response(
-      JSON.stringify({
-        error: err.message || "Unknown error",
-      }),
+      JSON.stringify({ error: err.message || "Unknown error" }),
       {
         status: 500,
         headers: { "content-type": "application/json" },

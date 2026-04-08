@@ -42,21 +42,41 @@ export default async (req) => {
 
     const sql = neon(process.env.NEON_DATABASE_URL);
 
+    const airportRows = await sql`
+      SELECT site_no, airport_code
+      FROM airports_v2
+      WHERE airport_code = ${airportCode}
+      LIMIT 1
+    `;
+
+    if (!airportRows.length) {
+      return new Response(
+        JSON.stringify({ error: `Unknown airportCode: ${airportCode}` }),
+        {
+          status: 404,
+          headers: { "content-type": "application/json" },
+        }
+      );
+    }
+
+    const siteNo = airportRows[0].site_no;
+    const canonicalAirportCode = airportRows[0].airport_code;
+
     const pointsDesc = await sql`
       SELECT
-        airport_code,
-        fbo_name,
-        fuel_type,
-        service_type,
-        price,
-        reported_date,
-        guaranteed,
-        valid_from::text AS valid_from
-      FROM price_periods
-      WHERE airport_code = ${airportCode}
-        AND fuel_type = ${fuelType}
-        AND service_type = ${serviceType}
-      ORDER BY valid_from DESC
+        ${canonicalAirportCode}::text AS airport_code,
+        p.fbo_name,
+        p.fuel_type,
+        p.service_type,
+        p.price,
+        p.reported_date,
+        p.guaranteed,
+        p.valid_from::text AS valid_from
+      FROM price_periods p
+      WHERE p.site_no = ${siteNo}
+        AND p.fuel_type = ${fuelType}
+        AND p.service_type = ${serviceType}
+      ORDER BY p.valid_from DESC, p.id DESC
       LIMIT 30
     `;
 
@@ -64,7 +84,7 @@ export default async (req) => {
 
     return new Response(
       JSON.stringify({
-        airportCode,
+        airportCode: canonicalAirportCode,
         fuelType,
         serviceType,
         points,
@@ -79,9 +99,7 @@ export default async (req) => {
     );
   } catch (err) {
     return new Response(
-      JSON.stringify({
-        error: err.message || "Unknown error",
-      }),
+      JSON.stringify({ error: err.message || "Unknown error" }),
       {
         status: 500,
         headers: { "content-type": "application/json" },
