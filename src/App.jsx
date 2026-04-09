@@ -5,7 +5,7 @@ import {
   TileLayer,
   CircleMarker,
   Popup,
- Tooltip,
+  Tooltip,
   Marker,
   useMap,
   useMapEvents,
@@ -85,6 +85,37 @@ function MapBoundsWatcher({ onBoundsChange }) {
 function MapInstanceCapture({ onReady }) {
   const map = useMap();
   useEffect(() => onReady(map), [map, onReady]);
+  return null;
+}
+
+function MapResizeFix({ deps = [] }) {
+  const map = useMap();
+
+  useEffect(() => {
+    const run = () => {
+      requestAnimationFrame(() => {
+        map.invalidateSize(false);
+      });
+    };
+
+    const timeoutId = setTimeout(run, 50);
+
+    window.addEventListener("resize", run);
+    window.addEventListener("orientationchange", run);
+
+    const vv = window.visualViewport;
+    vv?.addEventListener("resize", run);
+    vv?.addEventListener("scroll", run);
+
+    return () => {
+      clearTimeout(timeoutId);
+      window.removeEventListener("resize", run);
+      window.removeEventListener("orientationchange", run);
+      vv?.removeEventListener("resize", run);
+      vv?.removeEventListener("scroll", run);
+    };
+  }, [map, ...deps]);
+
   return null;
 }
 
@@ -385,46 +416,54 @@ export default function App() {
     );
   }
 
-  const panelTouchStartYRef = useRef(null);
-  const panelTouchCurrentYRef = useRef(null);
-  const panelDraggingRef = useRef(false);
+  const SWIPE_THRESHOLD = 40;
+
+  const gestureRef = useRef({
+    startY: null,
+    currentY: null,
+    active: false,
+  });
 
   function handlePanelTouchStart(e) {
     const y = e.touches?.[0]?.clientY;
     if (typeof y !== "number") return;
 
-    panelTouchStartYRef.current = y;
-    panelTouchCurrentYRef.current = y;
-    panelDraggingRef.current = true;
+    gestureRef.current.startY = y;
+    gestureRef.current.currentY = y;
+    gestureRef.current.active = true;
   }
 
   function handlePanelTouchMove(e) {
-    if (!panelDraggingRef.current) return;
+    if (!gestureRef.current.active) return;
+
     const y = e.touches?.[0]?.clientY;
     if (typeof y !== "number") return;
 
-    panelTouchCurrentYRef.current = y;
+    gestureRef.current.currentY = y;
+
+    if (e.cancelable) e.preventDefault();
   }
 
-  function handlePanelTouchEnd() {
-    if (!panelDraggingRef.current) return;
+  function finishPanelGesture() {
+    if (!gestureRef.current.active) return;
 
-    const startY = panelTouchStartYRef.current;
-    const currentY = panelTouchCurrentYRef.current;
+    const { startY, currentY } = gestureRef.current;
+    const deltaY =
+      typeof startY === "number" && typeof currentY === "number"
+        ? currentY - startY
+        : 0;
 
-    if (typeof startY === "number" && typeof currentY === "number") {
-      const deltaY = currentY - startY;
-
-      if (deltaY > 50) {
-        setMobilePanelOpen(false);
-      } else if (deltaY < -50) {
+    if (Math.abs(deltaY) >= SWIPE_THRESHOLD) {
+      if (deltaY < 0) {
         setMobilePanelOpen(true);
+      } else {
+        setMobilePanelOpen(false);
       }
     }
 
-    panelTouchStartYRef.current = null;
-    panelTouchCurrentYRef.current = null;
-    panelDraggingRef.current = false;
+    gestureRef.current.startY = null;
+    gestureRef.current.currentY = null;
+    gestureRef.current.active = false;
   }
 
   useEffect(() => {
@@ -915,6 +954,8 @@ export default function App() {
   const renderMarkers = () => (
     <>
       {filteredAirports.map((airport) => {
+        if (!Number.isFinite(airport.lat) || !Number.isFinite(airport.lon)) return null;
+
         const price = Number(airport.price);
         const validPrice = Number.isFinite(price) ? price : null;
         const isCanada = isCanadaAirport(airport);
@@ -1026,6 +1067,20 @@ export default function App() {
     </>
   );
 
+  const mapElement = (
+    <MapContainer center={[39.5, -98.35]} zoom={4} style={{ width: "100%", height: "100%" }}>
+      <TileLayer
+        attribution="&copy; OpenStreetMap contributors"
+        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+      />
+      <MapInstanceCapture onReady={setMapInstance} />
+      <FitBounds airports={filteredAirports} />
+      <MapBoundsWatcher onBoundsChange={setMapBounds} />
+      <MapResizeFix deps={[isMobile, mobilePanelOpen, filteredAirports.length]} />
+      {renderMarkers()}
+    </MapContainer>
+  );
+
   return (
     <div
       style={{
@@ -1039,17 +1094,15 @@ export default function App() {
     >
       {isMobile ? (
         <div style={{ position: "relative", width: "100%", height: "100%" }}>
-          <main style={{ width: "100%", height: "100%" }}>
-            <MapContainer center={[39.5, -98.35]} zoom={4} style={{ width: "100%", height: "100%" }}>
-              <TileLayer
-                attribution="&copy; OpenStreetMap contributors"
-                url="https://{s}.tile.openstreetmap.org/{z}/{y}/{x}.png" /* keep plain string output */
-              />
-              <MapInstanceCapture onReady={setMapInstance} />
-              <FitBounds airports={filteredAirports} />
-              <MapBoundsWatcher onBoundsChange={setMapBounds} />
-              {renderMarkers()}
-            </MapContainer>
+          <main
+            style={{
+              position: "absolute",
+              inset: 0,
+              width: "100%",
+              height: "100%",
+            }}
+          >
+            {mapElement}
           </main>
 
           <div
@@ -1126,7 +1179,8 @@ export default function App() {
               <div
                 onTouchStart={handlePanelTouchStart}
                 onTouchMove={handlePanelTouchMove}
-                onTouchEnd={handlePanelTouchEnd}
+                onTouchEnd={finishPanelGesture}
+                onTouchCancel={finishPanelGesture}
                 style={{
                   padding: "10px 16px 12px",
                   borderBottom: "1px solid #e2e8f0",
@@ -1197,18 +1251,7 @@ export default function App() {
             {panelContent}
           </aside>
 
-          <main style={{ flex: 1, minWidth: 0, height: "100%" }}>
-            <MapContainer center={[39.5, -98.35]} zoom={4} style={{ width: "100%", height: "100%" }}>
-              <TileLayer
-                attribution="&copy; OpenStreetMap contributors"
-                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-              />
-              <MapInstanceCapture onReady={setMapInstance} />
-              <FitBounds airports={filteredAirports} />
-              <MapBoundsWatcher onBoundsChange={setMapBounds} />
-              {renderMarkers()}
-            </MapContainer>
-          </main>
+          <main style={{ flex: 1, minWidth: 0, height: "100%" }}>{mapElement}</main>
         </div>
       )}
     </div>
