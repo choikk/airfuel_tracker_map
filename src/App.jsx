@@ -1109,7 +1109,7 @@ export default function App() {
             style={{
               position: "absolute",
               top: 12,
-              left: 12,
+              left: 72,
               right: 12,
               zIndex: 1000,
               display: "flex",
