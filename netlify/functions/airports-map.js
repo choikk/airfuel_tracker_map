@@ -92,9 +92,33 @@ export default async (req) => {
       ORDER BY p.reported_date ASC
     `;
 
+    const databaseMetaRows = await sql`
+      SELECT MAX(ts)::text AS database_updated_at
+      FROM (
+        SELECT MAX(p.valid_from) AS ts
+        FROM price_periods p
+        WHERE p.valid_from IS NOT NULL
+
+        UNION ALL
+
+        SELECT MAX(p.last_seen_at) AS ts
+        FROM price_periods p
+        WHERE p.last_seen_at IS NOT NULL
+
+        UNION ALL
+
+        SELECT MAX(p.reported_date::timestamp) AS ts
+        FROM price_periods p
+        WHERE p.reported_date IS NOT NULL
+      ) latest_updates
+    `;
+
+    const databaseUpdatedAt = databaseMetaRows[0]?.database_updated_at || "";
+
     return new Response(
       JSON.stringify({
         generatedAt: new Date().toISOString(),
+        databaseUpdatedAt,
         fuelType,
         serviceType,
         airports,

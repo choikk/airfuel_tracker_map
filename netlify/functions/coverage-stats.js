@@ -1,7 +1,15 @@
 import { neon } from "@neondatabase/serverless";
 
-export default async () => {
+export default async (req) => {
   try {
+    const url = new URL(req.url);
+    const fuelType = (url.searchParams.get("fuelType") || "").toUpperCase();
+    const serviceType = (url.searchParams.get("serviceType") || "").toUpperCase();
+    const allowedFuelTypes = ["100LL", "JET_A", "SAF", "MOGAS", "UL94", "UL91"];
+    const allowedServiceTypes = ["FULL", "SELF", "RA"];
+    const selectedFuelType = allowedFuelTypes.includes(fuelType) ? fuelType : null;
+    const selectedServiceType = allowedServiceTypes.includes(serviceType) ? serviceType : null;
+
     const sql = neon(process.env.NEON_DATABASE_URL);
 
     const rows = await sql`
@@ -80,7 +88,34 @@ export default async () => {
         (SELECT cnt FROM changed_last_24h) AS changed_last_24h
     `;
 
+    const recentPriceChanges = await sql`
+      SELECT DISTINCT ON (a.airport_code)
+        a.airport_code,
+        a.airport_name,
+        p.valid_from::text AS changed_at
+      FROM price_periods p
+      JOIN airports_v2 a
+        ON a.site_no = p.site_no
+      WHERE UPPER(COALESCE(a.state, '')) NOT LIKE '%CANADA%'
+        AND p.valid_from IS NOT NULL
+        AND p.valid_to IS NULL
+        AND (${selectedFuelType}::text IS NULL OR p.fuel_type = ${selectedFuelType})
+        AND (${selectedServiceType}::text IS NULL OR p.service_type = ${selectedServiceType})
+      ORDER BY
+        a.airport_code,
+        p.valid_from DESC,
+        p.price ASC
+    `;
+
     const row = rows[0] || {};
+    const topRecentPriceChanges = [...recentPriceChanges]
+      .sort((a, b) => Date.parse(b.changed_at || "") - Date.parse(a.changed_at || ""))
+      .slice(0, 5)
+      .map((item) => ({
+        airportCode: item.airport_code || "",
+        airportName: item.airport_name || "",
+        changedAt: item.changed_at || "",
+      }));
 
     return new Response(
       JSON.stringify({
@@ -89,6 +124,7 @@ export default async () => {
         remainingAirports: Number(row.remaining_airports || 0),
         attemptedLast24h: Number(row.attempted_last_24h || 0),
         changedLast24h: Number(row.changed_last_24h || 0),
+        recentPriceChanges: topRecentPriceChanges,
       }),
       {
         status: 200,
