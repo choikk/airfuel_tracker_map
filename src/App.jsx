@@ -1165,6 +1165,9 @@ export default function App() {
                   <span style={{ fontWeight: 600 }}>FBO:</span> {airport.fbo_name}
                 </div>
                 <div>
+                  <span style={{ fontWeight: 600 }}>Phone:</span> {airport.fbo_phone || "N/A"}
+                </div>
+                <div>
                   <span style={{ fontWeight: 600 }}>Fuel:</span> {airport.fuel_type}_{airport.service_type}
                 </div>
                 <div>
