@@ -12,6 +12,7 @@ import {
 } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import { Search, RefreshCw, Fuel } from "lucide-react";
+import { trackEvent } from "./lib/analytics.js";
 
 const FUEL_OPTIONS = [
   { value: "100LL", label: "100LL" },
@@ -40,6 +41,18 @@ const topStarIcon = L.divIcon({
   iconSize: [28, 28],
   iconAnchor: [14, 26],
 });
+
+function toDateOnly(value) {
+  if (!value) return "Unknown";
+
+  const parsedTime = Date.parse(value);
+  if (Number.isNaN(parsedTime)) {
+    const fallback = String(value).slice(0, 10);
+    return fallback || "Unknown";
+  }
+
+  return new Date(parsedTime).toISOString().slice(0, 10);
+}
 
 function FitBounds({ airports }) {
   const map = useMap();
@@ -385,6 +398,7 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [lastUpdated, setLastUpdated] = useState("");
+  const [databaseUpdatedAt, setDatabaseUpdatedAt] = useState("");
   const [mapBounds, setMapBounds] = useState(null);
   const [mapInstance, setMapInstance] = useState(null);
   const [selectedAirport, setSelectedAirport] = useState(null);
@@ -401,6 +415,12 @@ export default function App() {
     remainingAirports: 0,
     attemptedLast24h: 0,
     changedLast24h: 0,
+    recentPriceChanges: [],
+  });
+  const [appMeta, setAppMeta] = useState({
+    softwareVersion: "Unknown",
+    lastModified: "",
+    branch: "Unknown",
   });
 
   const [isMobile, setIsMobile] = useState(
@@ -408,25 +428,38 @@ export default function App() {
   );
   const [mobilePanelOpen, setMobilePanelOpen] = useState(false);
 
-  const databaseVersion = lastUpdated ? String(lastUpdated).slice(0, 10) : "Unknown";
+  const databaseVersion = toDateOnly(databaseUpdatedAt);
+  const appVersion =
+    appMeta.softwareVersion && appMeta.softwareVersion !== "Unknown"
+      ? appMeta.softwareVersion
+      : __APP_VERSION__;
 
   function showCredits() {
+    trackEvent("view_credits", {
+      surface: isMobile ? "mobile" : "desktop",
+    });
+
     window.alert(
-      `AirFuel Tracker\n\nSoftware Version: v0.1\nLast Modified: 2026-04-07\nDatabase Version: ${databaseVersion}\n\nBuilt with ⌨️ + ✈️ with lots of ❤️💙\n© Copyright 2026 pilot.drchoi@gmail.com. All rights reserved.`
+      `Credits\nCross Country Flight Planner\nApp version: ${appVersion}\nDatabase update: ${databaseVersion}\nMap data © OpenStreetMap contributors\nBuilt with React, Vite, Leaflet, and a lot of care.\n© 2026 pilot.drchoi@gmail.com. All rights reserved.`
     );
   }
 
   const SWIPE_THRESHOLD = 40;
+  const MOBILE_PANEL_HANDLE_HEIGHT = 88;
 
   const gestureRef = useRef({
     startY: null,
     currentY: null,
     active: false,
   });
+  const activePopupMarkerRef = useRef(null);
 
   function handlePanelTouchStart(e) {
     const y = e.touches?.[0]?.clientY;
     if (typeof y !== "number") return;
+    const panelTop = e.currentTarget?.getBoundingClientRect?.().top;
+    const offsetY = typeof panelTop === "number" ? y - panelTop : Number.POSITIVE_INFINITY;
+    if (offsetY > MOBILE_PANEL_HANDLE_HEIGHT) return;
 
     gestureRef.current.startY = y;
     gestureRef.current.currentY = y;
@@ -480,6 +513,43 @@ export default function App() {
   useEffect(() => {
     let cancelled = false;
 
+    async function loadAppMeta() {
+      try {
+        const res = await fetch("/.netlify/functions/app-meta");
+        if (!res.ok) throw new Error("Failed to load app metadata");
+
+        const data = await res.json();
+        if (!cancelled) {
+          setAppMeta({
+            softwareVersion:
+              typeof data?.softwareVersion === "string" && data.softwareVersion.trim()
+                ? data.softwareVersion
+                : "Unknown",
+            lastModified: typeof data?.lastModified === "string" ? data.lastModified : "",
+            branch:
+              typeof data?.branch === "string" && data.branch.trim() ? data.branch : "Unknown",
+          });
+        }
+      } catch {
+        if (!cancelled) {
+          setAppMeta({
+            softwareVersion: "Unknown",
+            lastModified: "",
+            branch: "Unknown",
+          });
+        }
+      }
+    }
+
+    loadAppMeta();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
     async function load() {
       setLoading(true);
       setError("");
@@ -494,6 +564,7 @@ export default function App() {
         if (!cancelled) {
           setAirports(Array.isArray(data.airports) ? data.airports : []);
           setLastUpdated(data.generatedAt || "");
+          setDatabaseUpdatedAt(data.databaseUpdatedAt || "");
           setNationalTrend(Array.isArray(data.nationalTrend) ? data.nationalTrend : []);
           setSelectedAirport(null);
           setAirportTrend([]);
@@ -518,7 +589,8 @@ export default function App() {
 
     async function loadCoverageStats() {
       try {
-        const res = await fetch("/.netlify/functions/coverage-stats");
+        const params = new URLSearchParams({ fuelType, serviceType });
+        const res = await fetch(`/.netlify/functions/coverage-stats?${params.toString()}`);
         if (!res.ok) throw new Error(`Coverage stats failed: ${res.status}`);
 
         const data = await res.json();
@@ -529,6 +601,9 @@ export default function App() {
             remainingAirports: Number(data.remainingAirports || 0),
             attemptedLast24h: Number(data.attemptedLast24h || 0),
             changedLast24h: Number(data.changedLast24h || 0),
+            recentPriceChanges: Array.isArray(data.recentPriceChanges)
+              ? data.recentPriceChanges
+              : [],
           });
         }
       } catch {
@@ -539,6 +614,7 @@ export default function App() {
             remainingAirports: 0,
             attemptedLast24h: 0,
             changedLast24h: 0,
+            recentPriceChanges: [],
           });
         }
       }
@@ -548,7 +624,7 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [fuelType, serviceType]);
 
   useEffect(() => {
     let cancelled = false;
@@ -705,8 +781,18 @@ export default function App() {
     if (!airport || !mapInstance) return;
     if (!Number.isFinite(airport.lat) || !Number.isFinite(airport.lon)) return;
 
+    if (activePopupMarkerRef.current) {
+      activePopupMarkerRef.current.closePopup();
+      activePopupMarkerRef.current = null;
+    }
+
     setSelectedAirport(airport);
     setHighlightedAirportCode(airport.airport_code);
+    trackEvent("select_airport", {
+      airport_code: airport.airport_code || "unknown",
+      fuel_type: fuelType,
+      service_type: serviceType,
+    });
 
     const nextZoom = Math.max(mapInstance.getZoom(), 8);
     mapInstance.flyTo([airport.lat, airport.lon], nextZoom, {
@@ -750,7 +836,17 @@ export default function App() {
       <div style={{ display: "grid", gap: 16 }}>
         <div>
           <label style={labelStyle}>Fuel type</label>
-          <select value={fuelType} onChange={(e) => setFuelType(e.target.value)} style={selectStyle}>
+          <select
+            value={fuelType}
+            onChange={(e) => {
+              const nextFuelType = e.target.value;
+              setFuelType(nextFuelType);
+              trackEvent("select_fuel_type", {
+                fuel_type: nextFuelType,
+              });
+            }}
+            style={selectStyle}
+          >
             {FUEL_OPTIONS.map((option) => (
               <option key={option.value} value={option.value}>
                 {option.label}
@@ -763,7 +859,13 @@ export default function App() {
           <label style={labelStyle}>Service type</label>
           <select
             value={serviceType}
-            onChange={(e) => setServiceType(e.target.value)}
+            onChange={(e) => {
+              const nextServiceType = e.target.value;
+              setServiceType(nextServiceType);
+              trackEvent("select_service_type", {
+                service_type: nextServiceType,
+              });
+            }}
             style={selectStyle}
           >
             <option value="FULL">Full service</option>
@@ -916,6 +1018,43 @@ export default function App() {
         </div>
 
         <div style={cardStyle}>
+          <div style={{ fontSize: 14, fontWeight: 600, color: "#334155", marginBottom: 8 }}>
+            Most recent price changes
+          </div>
+          {coverageStats.recentPriceChanges.length ? (
+            <div style={{ display: "grid", gap: 10 }}>
+              {coverageStats.recentPriceChanges.map((item) => {
+                const matchingAirport = airports.find(
+                  (airport) => airport.airport_code === item.airportCode
+                );
+
+                return (
+                  <div
+                    key={`${item.airportCode}-${item.changedAt}`}
+                    onClick={() => matchingAirport && focusAirportOnMap(matchingAirport)}
+                    style={{
+                      cursor: matchingAirport ? "pointer" : "default",
+                    }}
+                  >
+                    <div style={{ fontSize: 14, fontWeight: 700, color: "#0f172a" }}>
+                      {item.airportCode || "Unknown"}
+                    </div>
+                    <div style={{ fontSize: 13, color: "#475569" }}>
+                      {item.airportName || "Unnamed airport"}
+                    </div>
+                    <div style={{ fontSize: 12, color: "#64748b" }}>
+                      {toDateOnly(item.changedAt)}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div style={{ fontSize: 12, color: "#64748b" }}>No recent price changes found.</div>
+          )}
+        </div>
+
+        <div style={cardStyle}>
           <div style={{ marginBottom: 8, fontSize: 14, fontWeight: 600, color: "#334155" }}>
             National vs visible region trend
           </div>
@@ -996,7 +1135,18 @@ export default function App() {
               fillOpacity: 0.85,
               weight: isHighlighted ? 3 : 1,
             }}
-            eventHandlers={{ click: () => setSelectedAirport(airport) }}
+            eventHandlers={{
+              click: () => setSelectedAirport(airport),
+              popupopen: (event) => {
+                activePopupMarkerRef.current = event.target;
+                setSelectedAirport(airport);
+              },
+              popupclose: (event) => {
+                if (activePopupMarkerRef.current === event.target) {
+                  activePopupMarkerRef.current = null;
+                }
+              },
+            }}
           >
             <Tooltip direction="top" offset={[0, -10]} opacity={1}>
               <div style={{ fontSize: 14, fontWeight: 600 }}>
@@ -1124,14 +1274,27 @@ export default function App() {
               pointerEvents: "none",
             }}
           >
-            <div style={{ pointerEvents: "auto" }}>
+            <div
+              onClick={showCredits}
+              style={{ pointerEvents: "auto", cursor: "pointer" }}
+              title="Show credits"
+            >
               <div style={{ fontSize: 14, fontWeight: 700 }}>AirFuel Tracker</div>
               <div style={{ fontSize: 12, color: "#64748b" }}>
                 {fuelType} · {serviceType}
               </div>
             </div>
             <button
-              onClick={() => setMobilePanelOpen((v) => !v)}
+              onClick={() =>
+                setMobilePanelOpen((v) => {
+                  const nextOpen = !v;
+                  trackEvent("toggle_mobile_panel", {
+                    state: nextOpen ? "open" : "closed",
+                    source: "header_button",
+                  });
+                  return nextOpen;
+                })
+              }
               style={{
                 borderRadius: 12,
                 border: "1px solid #cbd5e1",
@@ -1161,6 +1324,10 @@ export default function App() {
             }}
           >
             <aside
+              onTouchStart={handlePanelTouchStart}
+              onTouchMove={handlePanelTouchMove}
+              onTouchEnd={finishPanelGesture}
+              onTouchCancel={finishPanelGesture}
               style={{
                 width: "100%",
                 maxWidth: 520,
@@ -1177,10 +1344,6 @@ export default function App() {
               }}
             >
               <div
-                onTouchStart={handlePanelTouchStart}
-                onTouchMove={handlePanelTouchMove}
-                onTouchEnd={finishPanelGesture}
-                onTouchCancel={finishPanelGesture}
                 style={{
                   padding: "10px 16px 12px",
                   borderBottom: "1px solid #e2e8f0",
@@ -1204,7 +1367,16 @@ export default function App() {
                     Filters & stats
                   </div>
                   <button
-                    onClick={() => setMobilePanelOpen((v) => !v)}
+                    onClick={() =>
+                      setMobilePanelOpen((v) => {
+                        const nextOpen = !v;
+                        trackEvent("toggle_mobile_panel", {
+                          state: nextOpen ? "open" : "closed",
+                          source: "panel_button",
+                        });
+                        return nextOpen;
+                      })
+                    }
                     style={{
                       border: "none",
                       background: "transparent",
