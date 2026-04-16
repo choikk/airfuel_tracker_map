@@ -42,6 +42,7 @@ export default async (req) => {
           WITH latest_open AS (
             SELECT DISTINCT ON (p.site_no)
               p.site_no,
+              BTRIM(p.site_no::text) AS site_no_key,
               p.airport_code,
               p.fbo_name,
               p.fbo_phone,
@@ -63,6 +64,49 @@ export default async (req) => {
               p.price ASC,
               p.valid_from DESC,
               p.id DESC
+          ),
+          latest_phone AS (
+            SELECT DISTINCT ON (
+              CASE
+                WHEN p.site_no IS NOT NULL AND BTRIM(p.site_no::text) <> ''
+                  THEN BTRIM(p.site_no::text)
+                ELSE NULL
+              END,
+              p.airport_code,
+              UPPER(BTRIM(COALESCE(p.fbo_name, '')))
+            )
+              CASE
+                WHEN p.site_no IS NOT NULL AND BTRIM(p.site_no::text) <> ''
+                  THEN BTRIM(p.site_no::text)
+                ELSE NULL
+              END AS site_no_key,
+              p.airport_code,
+              UPPER(BTRIM(COALESCE(p.fbo_name, ''))) AS fbo_name_key,
+              p.fbo_phone
+            FROM price_periods p
+            WHERE (
+                (
+                p.site_no IS NOT NULL
+                AND BTRIM(p.site_no::text) <> ''
+                )
+                OR (
+                p.airport_code IS NOT NULL
+                AND BTRIM(p.airport_code) <> ''
+                )
+              )
+              AND p.fbo_phone IS NOT NULL
+              AND BTRIM(p.fbo_phone) <> ''
+            ORDER BY
+              CASE
+                WHEN p.site_no IS NOT NULL AND BTRIM(p.site_no::text) <> ''
+                  THEN BTRIM(p.site_no::text)
+                ELSE NULL
+              END,
+              p.airport_code,
+              UPPER(BTRIM(COALESCE(p.fbo_name, ''))),
+              p.reported_date DESC NULLS LAST,
+              p.valid_from DESC,
+              p.id DESC
           )
           SELECT
             a.airport_code,
@@ -72,7 +116,7 @@ export default async (req) => {
             a.lat,
             a.lon,
             l.fbo_name,
-            l.fbo_phone,
+            COALESCE(lp.fbo_phone, l.fbo_phone) AS fbo_phone,
             l.fuel_type,
             l.service_type,
             l.price,
@@ -81,8 +125,18 @@ export default async (req) => {
             l.valid_from,
             l.last_seen_at
           FROM latest_open l
+          LEFT JOIN latest_phone lp
+            ON (
+                lp.site_no_key IS NOT NULL
+                AND lp.site_no_key = l.site_no_key
+              )
+              OR (
+                lp.site_no_key IS NULL
+                AND lp.airport_code = l.airport_code
+                AND lp.fbo_name_key = UPPER(BTRIM(COALESCE(l.fbo_name, '')))
+              )
           JOIN airports_v2 a
-            ON a.site_no = l.site_no
+            ON BTRIM(a.site_no::text) = l.site_no_key
           WHERE a.lat IS NOT NULL
             AND a.lon IS NOT NULL
           ORDER BY a.airport_code ASC
