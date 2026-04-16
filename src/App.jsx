@@ -7,6 +7,7 @@ import {
   Popup,
   Tooltip,
   Marker,
+  LayerGroup,
   useMap,
   useMapEvents,
 } from "react-leaflet";
@@ -745,6 +746,8 @@ export default function App() {
     };
   }, [visibleStats, nationalStats]);
 
+  const markerLayerKey = `${fuelType}-${serviceType}-${search.trim().toLowerCase()}`;
+
   const coveragePercent =
     coverageStats.totalFuelAirports > 0
       ? (coverageStats.coveredAirports / coverageStats.totalFuelAirports) * 100
@@ -1230,7 +1233,7 @@ export default function App() {
       <FitBounds airports={filteredAirports} />
       <MapBoundsWatcher onBoundsChange={setMapBounds} />
       <MapResizeFix deps={[isMobile, mobilePanelOpen, filteredAirports.length]} />
-      {renderMarkers()}
+      <LayerGroup key={markerLayerKey}>{renderMarkers()}</LayerGroup>
     </MapContainer>
   );
 
