@@ -89,22 +89,35 @@ export default async (req) => {
     `;
 
     const recentPriceChanges = await sql`
-      SELECT DISTINCT ON (a.airport_code)
-        a.airport_code,
-        a.airport_name,
-        p.valid_from::text AS changed_at
-      FROM price_periods p
-      JOIN airports_v2 a
-        ON a.site_no = p.site_no
-      WHERE UPPER(COALESCE(a.state, '')) NOT LIKE '%CANADA%'
-        AND p.valid_from IS NOT NULL
-        AND p.valid_to IS NULL
-        AND (${selectedFuelType}::text IS NULL OR p.fuel_type = ${selectedFuelType})
-        AND (${selectedServiceType}::text IS NULL OR p.service_type = ${selectedServiceType})
-      ORDER BY
-        a.airport_code,
-        p.valid_from DESC,
-        p.price ASC
+      WITH ranked_changes AS (
+        SELECT
+          a.airport_code,
+          a.airport_name,
+          p.valid_from::text AS changed_at,
+          p.price,
+          ROW_NUMBER() OVER (
+            PARTITION BY a.airport_code
+            ORDER BY p.valid_from DESC NULLS LAST, p.id DESC
+          ) AS rn
+        FROM price_periods p
+        JOIN airports_v2 a
+          ON a.site_no = p.site_no
+        WHERE UPPER(COALESCE(a.state, '')) NOT LIKE '%CANADA%'
+          AND p.valid_from IS NOT NULL
+          AND (${selectedFuelType}::text IS NULL OR p.fuel_type = ${selectedFuelType})
+          AND (${selectedServiceType}::text IS NULL OR p.service_type = ${selectedServiceType})
+      )
+      SELECT
+        current_change.airport_code,
+        current_change.airport_name,
+        current_change.changed_at,
+        current_change.price AS current_price,
+        previous_change.price AS previous_price
+      FROM ranked_changes current_change
+      LEFT JOIN ranked_changes previous_change
+        ON previous_change.airport_code = current_change.airport_code
+       AND previous_change.rn = 2
+      WHERE current_change.rn = 1
     `;
 
     const row = rows[0] || {};
@@ -115,6 +128,16 @@ export default async (req) => {
         airportCode: item.airport_code || "",
         airportName: item.airport_name || "",
         changedAt: item.changed_at || "",
+        currentPrice: Number(item.current_price),
+        previousPrice: Number(item.previous_price),
+        direction:
+          Number.isFinite(Number(item.current_price)) && Number.isFinite(Number(item.previous_price))
+            ? Number(item.current_price) > Number(item.previous_price)
+              ? "up"
+              : Number(item.current_price) < Number(item.previous_price)
+                ? "down"
+                : "same"
+            : "unknown",
       }));
 
     return new Response(
