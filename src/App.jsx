@@ -375,6 +375,42 @@ function toDisplayPrice(value) {
   return `$${n.toFixed(2)}`;
 }
 
+function toFuelServiceLabel(fuelType, serviceType) {
+  const left = String(fuelType || "").trim();
+  const right = String(serviceType || "").trim();
+
+  if (left && right) return `${left}_${right}`;
+  return left || right || "Unknown fuel";
+}
+
+function groupPriceChangeDetailsByFbo(details) {
+  const groups = [];
+  const groupMap = new Map();
+
+  for (const detail of details || []) {
+    const fboName = detail?.fboName || "Unknown FBO";
+
+    if (!groupMap.has(fboName)) {
+      const nextGroup = { fboName, details: [detail] };
+      groupMap.set(fboName, nextGroup);
+      groups.push(nextGroup);
+      continue;
+    }
+
+    groupMap.get(fboName).details.push(detail);
+  }
+
+  return groups;
+}
+
+function toCityStateLabel(city, state) {
+  const left = String(city || "").trim();
+  const right = String(state || "").trim();
+
+  if (left && right) return `${left}, ${right}`;
+  return left || right || "Unknown location";
+}
+
 function isCanadaAirport(airport) {
   return String(airport?.state || "").toUpperCase().includes("CANADA");
 }
@@ -1046,6 +1082,7 @@ export default function App() {
                 const matchingAirport = airports.find(
                   (airport) => airport.airport_code === item.airportCode
                 );
+                const detailGroups = groupPriceChangeDetailsByFbo(item.details);
 
                 return (
                   <div
@@ -1057,25 +1094,56 @@ export default function App() {
                   >
                     <div
                       style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 6,
                         fontSize: 14,
-                        fontWeight: 700,
                         color: "#0f172a",
                       }}
                     >
-                      <span>{item.airportCode || "Unknown"}</span>
-                      {item.direction === "up" ? (
-                        <span style={{ color: "#dc2626", fontWeight: 900 }}>↑</span>
-                      ) : item.direction === "down" ? (
-                        <span style={{ color: "#16a34a", fontWeight: 900 }}>↓</span>
-                      ) : null}
+                      <span style={{ fontWeight: 700 }}>{item.airportCode || "Unknown"}</span>
+                      <span style={{ fontWeight: 400 }}>
+                        {" | "}
+                        {item.airportName || "Unnamed airport"}
+                      </span>
                     </div>
-                    <div style={{ fontSize: 13, color: "#475569" }}>
-                      {item.airportName || "Unnamed airport"}
+                    <div style={{ fontSize: 14, color: "#475569" }}>
+                      {toCityStateLabel(item.city, item.state)}
                     </div>
-                    <div style={{ fontSize: 12, color: "#64748b" }}>
+                    <div style={{ display: "grid", gap: 8, marginTop: 6 }}>
+                      {detailGroups.map((group, groupIndex) => (
+                        <div key={`${item.airportCode}-${item.changedAt}-${groupIndex}`}>
+                          <div style={{ fontSize: 12, color: "#334155", fontWeight: 600 }}>
+                            {group.fboName}
+                          </div>
+                          <div style={{ display: "grid", gap: 4, marginTop: 2 }}>
+                            {group.details.map((detail, detailIndex) => (
+                              <div
+                                key={`${item.airportCode}-${item.changedAt}-${groupIndex}-${detailIndex}`}
+                                style={{
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: 6,
+                                  flexWrap: "wrap",
+                                  fontSize: 12,
+                                  fontWeight: 700,
+                                  color: detail.direction === "up" ? "#dc2626" : "#16a34a",
+                                }}
+                              >
+                                <span style={{ color: "#64748b", fontWeight: 600 }}>
+                                  {toFuelServiceLabel(detail.fuelType, detail.serviceType)}
+                                </span>
+                                <span style={{ fontWeight: 900 }}>
+                                  {detail.direction === "up" ? "▲" : "▼"}
+                                </span>
+                                <span>
+                                  {toDisplayPrice(detail.previousPrice)} {"→"}{" "}
+                                  {toDisplayPrice(detail.currentPrice)}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    <div style={{ fontSize: 12, color: "#64748b", marginTop: 6 }}>
                       {toDateOnly(item.changedAt)}
                     </div>
                   </div>
