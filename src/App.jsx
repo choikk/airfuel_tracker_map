@@ -391,6 +391,22 @@ function formatMiniTrendDate(value) {
   return `${mm}-${dd}-${yyyy}`;
 }
 
+async function boostAirportPriority(airportCode) {
+  if (!airportCode) return;
+
+  try {
+    await fetch("/.netlify/functions/airport-priority-boost", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ airportCode }),
+    });
+  } catch {
+    // Priority boosting is best-effort; map interactions should stay responsive.
+  }
+}
+
 export default function App() {
   const [fuelType, setFuelType] = useState("100LL");
   const [serviceType, setServiceType] = useState("FULL");
@@ -1143,6 +1159,7 @@ export default function App() {
               popupopen: (event) => {
                 activePopupMarkerRef.current = event.target;
                 setSelectedAirport(airport);
+                void boostAirportPriority(airport.airport_code);
               },
               popupclose: (event) => {
                 if (activePopupMarkerRef.current === event.target) {
