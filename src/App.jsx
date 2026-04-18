@@ -1055,8 +1055,22 @@ export default function App() {
                       cursor: matchingAirport ? "pointer" : "default",
                     }}
                   >
-                    <div style={{ fontSize: 14, fontWeight: 700, color: "#0f172a" }}>
-                      {item.airportCode || "Unknown"}
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 6,
+                        fontSize: 14,
+                        fontWeight: 700,
+                        color: "#0f172a",
+                      }}
+                    >
+                      <span>{item.airportCode || "Unknown"}</span>
+                      {item.direction === "up" ? (
+                        <span style={{ color: "#dc2626", fontWeight: 900 }}>↑</span>
+                      ) : item.direction === "down" ? (
+                        <span style={{ color: "#16a34a", fontWeight: 900 }}>↓</span>
+                      ) : null}
                     </div>
                     <div style={{ fontSize: 13, color: "#475569" }}>
                       {item.airportName || "Unnamed airport"}
