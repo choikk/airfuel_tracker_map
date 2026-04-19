@@ -96,6 +96,16 @@ function MapBoundsWatcher({ onBoundsChange }) {
   return null;
 }
 
+function MapTapDismiss({ onTap }) {
+  useMapEvents({
+    click() {
+      onTap();
+    },
+  });
+
+  return null;
+}
+
 function MapInstanceCapture({ onReady }) {
   const map = useMap();
   useEffect(() => onReady(map), [map, onReady]);
@@ -832,14 +842,22 @@ export default function App() {
     setRegionalTrend(points);
   }, [visibleStatAirports]);
 
+  function closeActivePopup() {
+    if (activePopupMarkerRef.current) {
+      activePopupMarkerRef.current.closePopup();
+      activePopupMarkerRef.current = null;
+    } else if (mapInstance) {
+      mapInstance.closePopup();
+    }
+
+    setSelectedAirport(null);
+  }
+
   function focusAirportOnMap(airport) {
     if (!airport || !mapInstance) return;
     if (!Number.isFinite(airport.lat) || !Number.isFinite(airport.lon)) return;
 
-    if (activePopupMarkerRef.current) {
-      activePopupMarkerRef.current.closePopup();
-      activePopupMarkerRef.current = null;
-    }
+    closeActivePopup();
 
     setSelectedAirport(airport);
     setHighlightedAirportCode(airport.airport_code);
@@ -894,6 +912,7 @@ export default function App() {
           <select
             value={fuelType}
             onChange={(e) => {
+              closeActivePopup();
               const nextFuelType = e.target.value;
               setFuelType(nextFuelType);
               trackEvent("select_fuel_type", {
@@ -915,6 +934,7 @@ export default function App() {
           <select
             value={serviceType}
             onChange={(e) => {
+              closeActivePopup();
               const nextServiceType = e.target.value;
               setServiceType(nextServiceType);
               trackEvent("select_service_type", {
@@ -1331,6 +1351,7 @@ export default function App() {
       <MapInstanceCapture onReady={setMapInstance} />
       <FitBounds airports={filteredAirports} />
       <MapBoundsWatcher onBoundsChange={setMapBounds} />
+      <MapTapDismiss onTap={closeActivePopup} />
       <MapResizeFix deps={[isMobile, mobilePanelOpen, filteredAirports.length]} />
       <LayerGroup key={markerLayerKey}>{renderMarkers()}</LayerGroup>
     </MapContainer>
@@ -1390,7 +1411,8 @@ export default function App() {
               </div>
             </div>
             <button
-              onClick={() =>
+              onClick={() => {
+                closeActivePopup();
                 setMobilePanelOpen((v) => {
                   const nextOpen = !v;
                   trackEvent("toggle_mobile_panel", {
@@ -1398,8 +1420,8 @@ export default function App() {
                     source: "header_button",
                   });
                   return nextOpen;
-                })
-              }
+                });
+              }}
               style={{
                 borderRadius: 12,
                 border: "1px solid #cbd5e1",
@@ -1472,7 +1494,8 @@ export default function App() {
                     Filters & stats
                   </div>
                   <button
-                    onClick={() =>
+                    onClick={() => {
+                      closeActivePopup();
                       setMobilePanelOpen((v) => {
                         const nextOpen = !v;
                         trackEvent("toggle_mobile_panel", {
@@ -1480,8 +1503,8 @@ export default function App() {
                           source: "panel_button",
                         });
                         return nextOpen;
-                      })
-                    }
+                      });
+                    }}
                     style={{
                       border: "none",
                       background: "transparent",
