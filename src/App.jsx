@@ -1276,6 +1276,10 @@ export default function App() {
                 if (activePopupMarkerRef.current === event.target) {
                   activePopupMarkerRef.current = null;
                 }
+
+                 setSelectedAirport((current) =>
+                   current?.airport_code === airport.airport_code ? null : current
+                 );
               },
             }}
           >
@@ -1285,8 +1289,42 @@ export default function App() {
               </div>
             </Tooltip>
 
-            <Popup>
-              <div style={{ minWidth: 220, display: "grid", gap: 4, fontSize: 14 }}>
+            <Popup closeButton={false}>
+              <div style={{ minWidth: 220, display: "grid", gap: 4, fontSize: 14, position: "relative" }}>
+                <button
+                  type="button"
+                  onTouchStart={(event) => {
+                    event.stopPropagation();
+                  }}
+                  onPointerDown={(event) => {
+                    event.stopPropagation();
+                  }}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    closeActivePopup();
+                  }}
+                  style={{
+                    position: "absolute",
+                    top: -6,
+                    right: -6,
+                    width: 32,
+                    height: 32,
+                    borderRadius: 999,
+                    border: "none",
+                    background: "transparent",
+                    color: "#64748b",
+                    fontSize: 24,
+                    lineHeight: 1,
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    padding: 0,
+                  }}
+                  aria-label="Close airport info"
+                >
+                  ×
+                </button>
                 <div style={{ fontSize: 16, fontWeight: 700 }}>{airport.airport_code}</div>
                 <div>{airport.airport_name || "Unknown airport"}</div>
                 <div style={{ color: "#475569" }}>
