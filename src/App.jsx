@@ -853,6 +853,15 @@ export default function App() {
     setSelectedAirport(null);
   }
 
+  function setMobilePanelState(nextOpen, source) {
+    closeActivePopup();
+    setMobilePanelOpen(nextOpen);
+    trackEvent("toggle_mobile_panel", {
+      state: nextOpen ? "open" : "closed",
+      source,
+    });
+  }
+
   function focusAirportOnMap(airport) {
     if (!airport || !mapInstance) return;
     if (!Number.isFinite(airport.lat) || !Number.isFinite(airport.lon)) return;
@@ -1411,16 +1420,15 @@ export default function App() {
               </div>
             </div>
             <button
-              onClick={() => {
-                closeActivePopup();
-                setMobilePanelOpen((v) => {
-                  const nextOpen = !v;
-                  trackEvent("toggle_mobile_panel", {
-                    state: nextOpen ? "open" : "closed",
-                    source: "header_button",
-                  });
-                  return nextOpen;
-                });
+              onTouchStart={(event) => {
+                event.stopPropagation();
+              }}
+              onPointerDown={(event) => {
+                event.stopPropagation();
+              }}
+              onClick={(event) => {
+                event.stopPropagation();
+                setMobilePanelState(!mobilePanelOpen, "header_button");
               }}
               style={{
                 borderRadius: 12,
@@ -1494,16 +1502,15 @@ export default function App() {
                     Filters & stats
                   </div>
                   <button
-                    onClick={() => {
-                      closeActivePopup();
-                      setMobilePanelOpen((v) => {
-                        const nextOpen = !v;
-                        trackEvent("toggle_mobile_panel", {
-                          state: nextOpen ? "open" : "closed",
-                          source: "panel_button",
-                        });
-                        return nextOpen;
-                      });
+                    onTouchStart={(event) => {
+                      event.stopPropagation();
+                    }}
+                    onPointerDown={(event) => {
+                      event.stopPropagation();
+                    }}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      setMobilePanelState(!mobilePanelOpen, "panel_button");
                     }}
                     style={{
                       border: "none",
