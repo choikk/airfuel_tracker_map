@@ -21,20 +21,14 @@ export default async (req) => {
           AND BTRIM(a.fuel_raw) <> ''
           AND UPPER(BTRIM(a.fuel_raw)) <> 'NONE'
           AND (
-            ${selectedFuelType}::text IS NULL
-            OR (${selectedFuelType} = '100LL' AND a.fuel_raw ILIKE '%100LL%')
-            OR (
-              ${selectedFuelType} = 'JET_A'
-              AND (
-                a.fuel_raw ILIKE '%JET A%'
-                OR a.fuel_raw ILIKE '%JET-A%'
-                OR a.fuel_raw ILIKE '%JET_A%'
-              )
-            )
-            OR (${selectedFuelType} = 'SAF' AND a.fuel_raw ILIKE '%SAF%')
-            OR (${selectedFuelType} = 'MOGAS' AND a.fuel_raw ILIKE '%MOGAS%')
-            OR (${selectedFuelType} = 'UL94' AND a.fuel_raw ILIKE '%UL94%')
-            OR (${selectedFuelType} = 'UL91' AND a.fuel_raw ILIKE '%UL91%')
+            a.fuel_raw ILIKE '%100LL%'
+            OR a.fuel_raw ILIKE '%JET A%'
+            OR a.fuel_raw ILIKE '%JET-A%'
+            OR a.fuel_raw ILIKE '%JET_A%'
+            OR a.fuel_raw ILIKE '%SAF%'
+            OR a.fuel_raw ILIKE '%MOGAS%'
+            OR a.fuel_raw ILIKE '%UL94%'
+            OR a.fuel_raw ILIKE '%UL91%'
           )
       ),
       covered_airports AS (
@@ -43,8 +37,6 @@ export default async (req) => {
         JOIN airports_v2 a
           ON a.site_no = p.site_no
         WHERE UPPER(COALESCE(a.state, '')) NOT LIKE '%CANADA%'
-          AND (${selectedFuelType}::text IS NULL OR p.fuel_type = ${selectedFuelType})
-          AND (${selectedServiceType}::text IS NULL OR p.service_type = ${selectedServiceType})
       ),
       attempted_last_24h AS (
         SELECT COUNT(DISTINCT s.airport_code) AS cnt
