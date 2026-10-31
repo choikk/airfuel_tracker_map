@@ -15,6 +15,8 @@ import "leaflet/dist/leaflet.css";
 import { Search, RefreshCw, Fuel } from "lucide-react";
 import { trackEvent } from "./lib/analytics.js";
 
+const API_BASE = import.meta.env.VITE_API_BASE || "/.netlify/functions";
+
 const FUEL_OPTIONS = [
   { value: "100LL", label: "100LL" },
   { value: "JET_A", label: "Jet-A" },
@@ -441,7 +443,7 @@ async function boostAirportPriority(airportCode) {
   if (!airportCode) return;
 
   try {
-    await fetch("/.netlify/functions/airport-priority-boost", {
+    await fetch(`${API_BASE}/airport-priority-boost`, {
       method: "POST",
       headers: {
         "content-type": "application/json",
@@ -578,7 +580,7 @@ export default function App() {
 
     async function loadAppMeta() {
       try {
-        const res = await fetch("/.netlify/functions/app-meta");
+        const res = await fetch(`${API_BASE}/app-meta`);
         if (!res.ok) throw new Error("Failed to load app metadata");
 
         const data = await res.json();
@@ -619,7 +621,7 @@ export default function App() {
 
       try {
         const params = new URLSearchParams({ fuelType, serviceType });
-        const res = await fetch(`/.netlify/functions/airports-map?${params.toString()}`);
+        const res = await fetch(`${API_BASE}/airports-map?${params.toString()}`);
         if (!res.ok) throw new Error(`Request failed: ${res.status}`);
 
         const data = await res.json();
@@ -653,7 +655,7 @@ export default function App() {
     async function loadCoverageStats() {
       try {
         const params = new URLSearchParams({ fuelType, serviceType });
-        const res = await fetch(`/.netlify/functions/coverage-stats?${params.toString()}`);
+        const res = await fetch(`${API_BASE}/coverage-stats?${params.toString()}`);
         if (!res.ok) throw new Error(`Coverage stats failed: ${res.status}`);
 
         const data = await res.json();
@@ -707,7 +709,7 @@ export default function App() {
           serviceType,
         });
 
-        const res = await fetch(`/.netlify/functions/airport-trend?${params.toString()}`);
+        const res = await fetch(`${API_BASE}/airport-trend?${params.toString()}`);
         if (!res.ok) throw new Error("Trend request failed");
 
         const data = await res.json();
