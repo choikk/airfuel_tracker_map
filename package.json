@@ -2,6 +2,7 @@
   "name": "airfuel_tracker_map",
   "private": true,
   "version": "1.0.1",
+  "appVersion": "2026.11.01",
   "type": "module",
   "scripts": {
     "dev": "vite",

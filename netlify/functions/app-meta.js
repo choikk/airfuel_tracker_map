@@ -78,7 +78,8 @@ async function readPackageVersion() {
   try {
     const packageJson = await readFile(new URL("../../package.json", import.meta.url), "utf8");
     const parsed = JSON.parse(packageJson);
-    return typeof parsed?.version === "string" ? parsed.version.trim() : "";
+    const version = parsed?.appVersion || parsed?.version;
+    return typeof version === "string" ? version.trim() : "";
   } catch {
     return "";
   }
