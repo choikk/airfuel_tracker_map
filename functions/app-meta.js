@@ -76,7 +76,7 @@ async function readLocalGitMeta() {
 
 async function readPackageVersion() {
   try {
-    const packageJson = await readFile(new URL("../../package.json", import.meta.url), "utf8");
+    const packageJson = await readFile(new URL("../package.json", import.meta.url), "utf8");
     const parsed = JSON.parse(packageJson);
     const version = parsed?.appVersion || parsed?.version;
     return typeof version === "string" ? version.trim() : "";

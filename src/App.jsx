@@ -15,7 +15,7 @@ import "leaflet/dist/leaflet.css";
 import { Search, RefreshCw, Fuel } from "lucide-react";
 import { trackEvent } from "./lib/analytics.js";
 
-const API_BASE = import.meta.env.VITE_API_BASE || "/.netlify/functions";
+const API_BASE = import.meta.env.VITE_API_BASE || "/api";
 
 const FUEL_OPTIONS = [
   { value: "100LL", label: "100LL" },
@@ -482,6 +482,7 @@ export default function App() {
     changedLast24h: 0,
     recentPriceChanges: [],
   });
+  const [visitors24h, setVisitors24h] = useState(null);
   const [appMeta, setAppMeta] = useState({
     softwareVersion: "Unknown",
     lastModified: "",
@@ -498,6 +499,19 @@ export default function App() {
     appMeta.softwareVersion && appMeta.softwareVersion !== "Unknown"
       ? appMeta.softwareVersion
       : __APP_VERSION__;
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`${API_BASE}/visitors`, { cache: "no-store" })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (!cancelled && Number.isFinite(data?.visitors24h)) setVisitors24h(data.visitors24h);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   function showCredits() {
     trackEvent("view_credits", {
@@ -917,6 +931,11 @@ export default function App() {
           <p style={{ margin: "2px 0 0", fontSize: 12, color: "#94a3b8" }}>
             App version: {appVersion}
           </p>
+          {visitors24h != null && (
+            <p style={{ margin: "2px 0 0", fontSize: 12, color: "#94a3b8" }}>
+              Visitors (last 24h): {visitors24h.toLocaleString("en-US")}
+            </p>
+          )}
           <a
             href="https://www.soloaviators.com/"
             style={{ display: "inline-block", marginTop: 4, fontSize: 12, fontWeight: 600, color: "#2563eb", textDecoration: "none" }}
