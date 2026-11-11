@@ -12,7 +12,7 @@ import {
   useMapEvents,
 } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
-import { Search, RefreshCw, Fuel } from "lucide-react";
+import { Search, RefreshCw } from "lucide-react";
 import { trackEvent } from "./lib/analytics.js";
 
 const API_BASE = import.meta.env.VITE_API_BASE || "/api";
@@ -902,21 +902,13 @@ export default function App() {
   const panelContent = (
     <>
       <div style={{ display: "flex", alignItems: "center", gap: 12, paddingBottom: 16 }}>
-        <div
-          style={{
-            width: 36,
-            height: 36,
-            borderRadius: 16,
-            background: "#0f172a",
-            color: "#fff",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            flexShrink: 0,
-          }}
-        >
-          <Fuel size={20} />
-        </div>
+        <img
+          src={`${import.meta.env.BASE_URL}solo-emblem-64.png`}
+          alt="Solo Aviators"
+          width="40"
+          height="40"
+          style={{ display: "block", flexShrink: 0, borderRadius: "50%" }}
+        />
         <div style={{ minWidth: 0 }}>
           <h1
             onClick={showCredits}
@@ -1477,7 +1469,15 @@ export default function App() {
               pointerEvents: "none",
             }}
           >
-            <div style={{ pointerEvents: "auto" }}>
+            <div style={{ pointerEvents: "auto", display: "flex", alignItems: "center", gap: 10 }}>
+              <img
+                src={`${import.meta.env.BASE_URL}solo-emblem-64.png`}
+                alt="Solo Aviators"
+                width="34"
+                height="34"
+                style={{ display: "block", flexShrink: 0, borderRadius: "50%" }}
+              />
+              <div>
               <div
                 onClick={showCredits}
                 style={{ cursor: "pointer" }}
@@ -1494,6 +1494,7 @@ export default function App() {
               >
                 ← Solo Aviators
               </a>
+              </div>
             </div>
             <button
               onTouchStart={(event) => {
