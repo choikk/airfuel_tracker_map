@@ -917,6 +917,12 @@ export default function App() {
           <p style={{ margin: "2px 0 0", fontSize: 12, color: "#94a3b8" }}>
             App version: {appVersion}
           </p>
+          <a
+            href="https://www.soloaviators.com/"
+            style={{ display: "inline-block", marginTop: 4, fontSize: 12, fontWeight: 600, color: "#2563eb", textDecoration: "none" }}
+          >
+            ← Solo Aviators
+          </a>
         </div>
       </div>
 
@@ -1452,15 +1458,23 @@ export default function App() {
               pointerEvents: "none",
             }}
           >
-            <div
-              onClick={showCredits}
-              style={{ pointerEvents: "auto", cursor: "pointer" }}
-              title="Show credits"
-            >
-              <div style={{ fontSize: 14, fontWeight: 700 }}>AirFuel Tracker</div>
-              <div style={{ fontSize: 12, color: "#64748b" }}>
-                {fuelType} · {serviceType}
+            <div style={{ pointerEvents: "auto" }}>
+              <div
+                onClick={showCredits}
+                style={{ cursor: "pointer" }}
+                title="Show credits"
+              >
+                <div style={{ fontSize: 14, fontWeight: 700 }}>AirFuel Tracker</div>
+                <div style={{ fontSize: 12, color: "#64748b" }}>
+                  {fuelType} · {serviceType}
+                </div>
               </div>
+              <a
+                href="https://www.soloaviators.com/"
+                style={{ fontSize: 12, fontWeight: 600, color: "#2563eb", textDecoration: "none" }}
+              >
+                ← Solo Aviators
+              </a>
             </div>
             <button
               onTouchStart={(event) => {
