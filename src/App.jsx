@@ -146,6 +146,10 @@ function MapResizeFix({ deps = [] }) {
 }
 
 function MiniTrend({ points, width = 260, height = 110, showPointLabels = false }) {
+  // Dense series are unreadable with every label drawn, so only the latest point is labelled;
+  // the others show their date and price on hover (or tap).
+  const [activeIdx, setActiveIdx] = useState(null);
+
   if (!points || points.length < 2) {
     return <div style={{ fontSize: 12, color: "#64748b" }}>Not enough history</div>;
   }
@@ -212,28 +216,56 @@ function MiniTrend({ points, width = 260, height = 110, showPointLabels = false 
         <polyline fill="none" stroke="#0284c7" strokeWidth="2" points={polylinePoints} />
 
         {coords.map((p, idx) => {
-          const isNearRight = p.x > width - 70;
-          const labelX = isNearRight ? p.x - 4 : p.x + 4;
-          const anchor = isNearRight ? "end" : "start";
-          const dateY = p.y - 8 < 10 ? p.y + 12 : p.y - 8;
-          const priceY = dateY + 11;
+          const isLast = idx === coords.length - 1;
+          const isActive = idx === activeIdx;
 
           return (
             <g key={idx}>
-              <circle cx={p.x} cy={p.y} r="3" fill="#0284c7" />
+              <circle
+                cx={p.x}
+                cy={p.y}
+                r={isLast || isActive ? 4 : 2.5}
+                fill={isActive ? "#0f172a" : "#0284c7"}
+              />
               {showPointLabels && (
-                <>
-                  <text x={labelX} y={dateY} fontSize="8" textAnchor={anchor} fill="#475569">
-                    {p.labelDate}
-                  </text>
-                  <text x={labelX} y={priceY} fontSize="8" textAnchor={anchor} fill="#0f172a">
-                    {p.labelPrice}
-                  </text>
-                </>
+                <circle
+                  cx={p.x}
+                  cy={p.y}
+                  r="6"
+                  fill="transparent"
+                  style={{ cursor: "pointer" }}
+                  onMouseEnter={() => setActiveIdx(idx)}
+                  onMouseLeave={() => setActiveIdx(null)}
+                  onClick={() => setActiveIdx((cur) => (cur === idx ? null : idx))}
+                >
+                  <title>{`${p.labelDate}  ${p.labelPrice}`}</title>
+                </circle>
               )}
             </g>
           );
         })}
+
+        {showPointLabels &&
+          (() => {
+            const p = coords[activeIdx] ?? coords[coords.length - 1];
+            const isNearRight = p.x > width - 70;
+            const labelX = isNearRight ? p.x - 6 : p.x + 6;
+            const anchor = isNearRight ? "end" : "start";
+            const dateY = p.y - 14 < 10 ? p.y + 16 : p.y - 14;
+            const priceY = dateY + 11;
+            const halo = { paintOrder: "stroke", stroke: "#ffffff", strokeWidth: 3, strokeLinejoin: "round" };
+
+            return (
+              <g style={{ pointerEvents: "none" }}>
+                <text x={labelX} y={dateY} fontSize="9" textAnchor={anchor} fill="#475569" style={halo}>
+                  {p.labelDate}
+                </text>
+                <text x={labelX} y={priceY} fontSize="10" fontWeight="700" textAnchor={anchor} fill="#0f172a" style={halo}>
+                  {p.labelPrice}
+                </text>
+              </g>
+            );
+          })()}
       </svg>
     </div>
   );
