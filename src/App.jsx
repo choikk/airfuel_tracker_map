@@ -248,19 +248,20 @@ function MiniTrend({ points, width = 260, height = 110, showPointLabels = false 
         {showPointLabels &&
           (() => {
             const p = coords[activeIdx] ?? coords[coords.length - 1];
-            const isNearRight = p.x > width - 70;
-            const labelX = isNearRight ? p.x - 6 : p.x + 6;
-            const anchor = isNearRight ? "end" : "start";
-            const dateY = p.y - 14 < 10 ? p.y + 16 : p.y - 14;
-            const priceY = dateY + 11;
+            // Centered on the dot: above it when there is room, otherwise below it.
+            // The price stays closest to the dot and the date sits on its far side.
+            const above = p.y >= 30;
+            const priceY = above ? p.y - 9 : p.y + 17;
+            const dateY = above ? p.y - 21 : p.y + 28;
+            const labelX = Math.min(Math.max(p.x, 24), width - 24);
             const halo = { paintOrder: "stroke", stroke: "#ffffff", strokeWidth: 3, strokeLinejoin: "round" };
 
             return (
               <g style={{ pointerEvents: "none" }}>
-                <text x={labelX} y={dateY} fontSize="9" textAnchor={anchor} fill="#475569" style={halo}>
+                <text x={labelX} y={dateY} fontSize="9" textAnchor="middle" fill="#475569" style={halo}>
                   {p.labelDate}
                 </text>
-                <text x={labelX} y={priceY} fontSize="10" fontWeight="700" textAnchor={anchor} fill="#0f172a" style={halo}>
+                <text x={labelX} y={priceY} fontSize="10" fontWeight="700" textAnchor="middle" fill="#0f172a" style={halo}>
                   {p.labelPrice}
                 </text>
               </g>
