@@ -505,7 +505,7 @@ export default function App() {
     });
 
     window.alert(
-      `Credits\nCross Country Flight Planner\nApp version: ${appVersion}\nDatabase update: ${databaseVersion}\nMap data © OpenStreetMap contributors\nBuilt with React, Vite, Leaflet, and a lot of care.\n© 2026 pilot.drchoi@gmail.com. All rights reserved.`
+      `Credits\nAirFuel Tracker\nApp version: ${appVersion}\nDatabase update: ${databaseVersion}\nMap data © OpenStreetMap contributors\nBuilt with React, Vite, Leaflet, and a lot of care.\n© 2026 pilot.drchoi@gmail.com. All rights reserved.`
     );
   }
 
@@ -913,6 +913,9 @@ export default function App() {
           </h1>
           <p style={{ margin: "4px 0 0", fontSize: 14, color: "#64748b" }}>
             Live airport fuel price and trend.
+          </p>
+          <p style={{ margin: "2px 0 0", fontSize: 12, color: "#94a3b8" }}>
+            App version: {appVersion}
           </p>
         </div>
       </div>
