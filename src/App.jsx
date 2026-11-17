@@ -182,7 +182,7 @@ function MiniTrend({ points, width = 260, height = 110, showPointLabels = false 
 
   const paddingLeft = 10;
   const paddingRight = showPointLabels ? 44 : 10;
-  const paddingTop = showPointLabels ? 20 : 8;
+  const paddingTop = showPointLabels ? 32 : 8;
   const paddingBottom = showPointLabels ? 18 : 8;
 
   const usableW = width - paddingLeft - paddingRight;
@@ -237,9 +237,7 @@ function MiniTrend({ points, width = 260, height = 110, showPointLabels = false 
                   onMouseEnter={() => setActiveIdx(idx)}
                   onMouseLeave={() => setActiveIdx(null)}
                   onClick={() => setActiveIdx((cur) => (cur === idx ? null : idx))}
-                >
-                  <title>{`${p.labelDate}  ${p.labelPrice}`}</title>
-                </circle>
+                />
               )}
             </g>
           );
@@ -248,9 +246,9 @@ function MiniTrend({ points, width = 260, height = 110, showPointLabels = false 
         {showPointLabels &&
           (() => {
             const p = coords[activeIdx] ?? coords[coords.length - 1];
-            // Centered on the dot: above it when there is room, otherwise below it.
+            // Always centered above the dot (top padding leaves room for both lines).
             // The price stays closest to the dot and the date sits on its far side.
-            const above = p.y >= 30;
+            const above = true;
             const priceY = above ? p.y - 9 : p.y + 17;
             const dateY = above ? p.y - 21 : p.y + 28;
             const labelX = Math.min(Math.max(p.x, 24), width - 24);
