@@ -59,7 +59,7 @@ export default async (req) => {
               AND p.site_no IS NOT NULL
             ORDER BY
               p.site_no,
-              p.reported_date DESC NULLS LAST,
+              COALESCE(p.reported_date::timestamptz, p.valid_from) DESC NULLS LAST,
               p.price ASC,
               p.valid_from DESC,
               p.id DESC
@@ -107,7 +107,7 @@ export default async (req) => {
               AND p.site_no IS NOT NULL
             ORDER BY
               p.site_no,
-              p.reported_date DESC NULLS LAST,
+              COALESCE(p.reported_date::timestamptz, p.valid_from) DESC NULLS LAST,
               p.price ASC,
               p.valid_from DESC,
               p.id DESC
