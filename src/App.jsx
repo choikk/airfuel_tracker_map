@@ -14,6 +14,7 @@ import {
 import "leaflet/dist/leaflet.css";
 import { Search, RefreshCw } from "lucide-react";
 import { trackEvent } from "./lib/analytics.js";
+import VfrChartsControl from "./VfrChartsControl.jsx";
 
 const API_BASE = import.meta.env.VITE_API_BASE || "/api";
 
@@ -1448,6 +1449,7 @@ export default function App() {
         attribution="&copy; OpenStreetMap contributors"
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
       />
+      <VfrChartsControl belowHeaderOnMobile />
       <MapInstanceCapture onReady={setMapInstance} />
       <FitBounds airports={filteredAirports} />
       <MapBoundsWatcher onBoundsChange={setMapBounds} />
